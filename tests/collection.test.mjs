@@ -27,3 +27,47 @@ test('冷却持久化、草稿不自动入库、重复保存幂等', () => {
   db.setAnalysis(d.id,{summary:'摘要',category:'产品动态',tags:['AI'],impact:'AI分析',action:'建议',model:'test'});
   const id=db.confirmDraft(d.id); assert.equal(db.confirmDraft(d.id),id); assert.equal(db.importedArticles().length,1); assert.ok(id>=1000000001); assert.equal(db.importedArticles()[0].dateIsCollection,true);
 });
+test('日报服务端持久化增删查', () => {
+  const report = db.saveReport({
+    title: 'AI安全测试日报',
+    content: '# 测试内容',
+    sources: [{ number: 1, title: '文章' }],
+    mode: 'auto',
+    model: 'deepseek',
+    preferences: { focus: 'compliance' }
+  });
+  assert.ok(report?.id);
+  assert.equal(report.title, 'AI安全测试日报');
+  assert.equal(report.content, '# 测试内容');
+  assert.equal(report.sources.length, 1);
+  assert.equal(report.preferences.focus, 'compliance');
+  const fetched = db.getReport(report.id);
+  assert.equal(fetched.id, report.id);
+  const list = db.listReports(10);
+  assert.ok(list.some(r => r.id === report.id));
+  const deleted = db.deleteReport(report.id);
+  assert.equal(deleted, true);
+  assert.equal(db.getReport(report.id), null);
+});
+test('RSS 订阅源增删改查与官方预置', () => {
+  const feeds = db.listRssFeeds();
+  assert.ok(feeds.length >= 6, '默认自动初始化官方精选源');
+  assert.ok(feeds.some(f => f.name.includes('CISA') && f.filterKeywords.includes('AI')));
+
+  const custom = db.saveRssFeed({
+    name: '测试合规源',
+    url: 'https://example.com/rss.xml',
+    category: '监管政策',
+    filterKeywords: '合规,安全',
+    enabled: 1
+  });
+  assert.ok(custom.id);
+  assert.equal(custom.name, '测试合规源');
+
+  const toggled = db.toggleRssFeed(custom.id, 0);
+  assert.equal(toggled.enabled, 0);
+
+  const deleted = db.deleteRssFeed(custom.id);
+  assert.equal(deleted, true);
+  assert.equal(db.getRssFeed(custom.id), null);
+});
