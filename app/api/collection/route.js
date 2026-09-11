@@ -66,7 +66,26 @@ export async function POST(request) {
         const old = cachedDraft(entry.url); if (old) { drafts.push(old); continue; }
         const entryHost = new URL(entry.url).hostname;
         if (!claimed.has(entryHost)) { claimHost(entryHost); claimed.add(entryHost); }
-        drafts.push(addDraft(extractArticle(await allowedRead(entry.url, context), entry.url)));
+        let article;
+        try {
+          const pageBuf = await allowedRead(entry.url, context);
+          article = extractArticle(pageBuf, entry.url, entry.fallbackText);
+        } catch (readErr) {
+          if (entry.fallbackText && entry.fallbackText.length >= 200) {
+            article = {
+              title: entry.title,
+              text: entry.fallbackText.slice(0, 12000),
+              publishedAt: null,
+              url: entry.url,
+              source: new URL(entry.url).hostname,
+              kind: 'rss-feed',
+              collectedAt: new Date().toISOString()
+            };
+          } else {
+            throw readErr;
+          }
+        }
+        drafts.push(addDraft(article));
       } catch (e) { errors.push({ title: entry.title, error: e.message }); }
     }
     logRun({ action: input.action === 'crawl_feed' ? '定向源采集' : 'RSS采集', url, status: drafts.length ? errors.length ? '部分成功' : '成功' : '失败', requests: context.requests, count: drafts.length, errors });

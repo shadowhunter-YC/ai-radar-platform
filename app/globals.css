@@ -133,6 +133,22 @@ button {
   padding-top: 26px;
 }
 
+.workspace-shell__content--sources {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 24px 32px 48px;
+}
+
+.source-manager-full {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
 .app-sidebar {
   position: sticky;
   top: 0;

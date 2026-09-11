@@ -185,7 +185,7 @@ export default function SourceManager() {
   }
 
   return (
-    <div className="source-config-page" style={{ display: 'grid', gap: 20 }}>
+    <div className="source-manager-full" style={{ width: '100%', maxWidth: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* 顶部订阅配置中心卡片 */}
       <div className="panel" style={{ padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, borderBottom: '1px solid var(--color-border)', paddingBottom: 16 }}>
