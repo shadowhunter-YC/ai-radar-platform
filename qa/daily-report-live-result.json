@@ -1,0 +1,25 @@
+{
+  "testedAt": "2026-09-10T05:31:41.101Z",
+  "model": "deepseek-ai/DeepSeek-V4-Pro",
+  "mode": "mock",
+  "durationMs": 39399,
+  "firstTextMs": 861,
+  "chunks": 495,
+  "characters": 905,
+  "hasCitations": true,
+  "hasSampleNotice": true,
+  "sections": [
+    {
+      "title": "今日概览",
+      "present": true
+    },
+    {
+      "title": "重点新闻",
+      "present": true
+    },
+    {
+      "title": "影响与建议",
+      "present": true
+    }
+  ]
+}
