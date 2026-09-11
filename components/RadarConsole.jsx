@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import DailyReports, { LatestDailyBrief } from "./DailyReports";
 import ManualCollection from "./ManualCollection";
+import SourceManager from "./SourceManager";
 import { CANONICAL_TAGS, normalizeTags } from "@/lib/tag-taxonomy.mjs";
 
 const navItems = [
@@ -206,10 +207,7 @@ export default function RadarConsole({ initialArticleId, initialState, view = "o
             />
           ) : null}
           {view === "sources" ? (
-            <SourcesPage
-              configuredSources={configuredSources}
-              setConfiguredSources={setConfiguredSources}
-            />
+            <SourceManager />
           ) : null}
           {view === "analysis" ? (
             <AnalysisPage
