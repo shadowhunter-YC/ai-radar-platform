@@ -20,6 +20,20 @@ test('HTML提取去除脚本并保留真实日期，RSS去重限三篇', () => {
   const atom='<feed><entry><title>Atom</title><link rel="alternate" href="https://example.com/atom"/></entry></feed>';
   assert.equal(extractFeed(Buffer.from(atom),'https://example.com/feed')[0].url,'https://example.com/atom');
 });
+test('RSS 解析支持根据关键词门禁过滤无关内容', () => {
+  const rss = `<rss><channel>
+    <item><title>NVD CVE-2026-1234: Linux kernel buffer overflow</title><description>Legacy memory corruption</description><link>https://example.com/1</link></item>
+    <item><title>CISA Alert: Emerging LLM Agent jailbreak techniques</title><description>Adversarial attacks against Generative AI models</description><link>https://example.com/2</link></item>
+    <item><title>Apache Tomcat patch released</title><description>Regular maintenance release</description><link>https://example.com/3</link></item>
+  </channel></rss>`;
+
+  const all = extractFeed(Buffer.from(rss), 'https://example.com/feed');
+  assert.equal(all.length, 3);
+
+  const filtered = extractFeed(Buffer.from(rss), 'https://example.com/feed', 'AI, LLM, Generative AI, 大模型');
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].url, 'https://example.com/2');
+});
 test('冷却持久化、草稿不自动入库、重复保存幂等', () => {
   db.claimHost('example.com',1000000); assert.throws(()=>db.claimHost('example.com',1000001)); db.claimHost('example.com',1600000);
   const body={title:'文章',url:'https://example.com/1',text:'正文'.repeat(200),source:'example.com',kind:'web',publishedAt:null,collectedAt:new Date().toISOString()};
