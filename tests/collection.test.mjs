@@ -84,4 +84,15 @@ test('RSS 订阅源增删改查与官方预置', () => {
   const deleted = db.deleteRssFeed(custom.id);
   assert.equal(deleted, true);
   assert.equal(db.getRssFeed(custom.id), null);
+
+  const first = feeds[0];
+  const touched = db.touchRssFeed(first.id);
+  assert.ok(touched.lastFetchedAt);
+});
+test('AI分析结果包含 isRelevant 主题研判并可落库', () => {
+  const body = { title: '文章2', url: 'https://example.com/2', text: '正文'.repeat(200), source: 'example.com', kind: 'web', publishedAt: null, collectedAt: new Date().toISOString() };
+  const d = db.addDraft(body);
+  db.setAnalysis(d.id, { isRelevant: true, summary: '摘要', category: '产品动态', tags: ['AI'], impact: '影响', action: '行动', model: 'test' });
+  const draft = db.getDraft(d.id);
+  assert.equal(draft.analysis.isRelevant, true);
 });
