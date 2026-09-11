@@ -54,7 +54,7 @@ export async function POST(request) {
     }
     const url = normalizeUrl(targetUrl).href;
     const host = new URL(url).hostname; claimHost(host);
-    const buffer = await allowedRead(url, context);
+    const buffer = await allowedRead(url, context, { skipRobots: true });
     const drafts = [], errors = [], claimed = new Set([host]);
     const entries = extractFeed(buffer, url, filterKeywords);
     if (!entries.length) {

@@ -96,3 +96,41 @@ test('AI分析结果包含 isRelevant 主题研判并可落库', () => {
   const draft = db.getDraft(d.id);
   assert.equal(draft.analysis.isRelevant, true);
 });
+
+test('微信公众号 RSS 解析与 AI 安全合规关键词精准筛选', () => {
+  const wechatRssXml = `<?xml version="1.0" encoding="UTF-8"?>
+  <rss version="2.0">
+    <channel>
+      <title>微信公众号聚合</title>
+      <item>
+        <title>最新旗舰手机摄影横评体验</title>
+        <link>https://mp.weixin.qq.com/s/phone123</link>
+        <description>今天我们对三款旗舰手机的拍照和长焦进行了多场景实测对比。</description>
+      </item>
+      <item>
+        <title>网信办发布深度合成与大模型算法备案最新清单</title>
+        <link>https://mp.weixin.qq.com/s/model456</link>
+        <description>最新一批生成式人工智能服务已完成算法备案，重点强化数据安全与合规治理。</description>
+      </item>
+      <item>
+        <title>周末烘焙日记：自制法式牛角可颂面包</title>
+        <link>https://mp.weixin.qq.com/s/bread789</link>
+        <description>详细步骤教你做出酥脆分层可颂，周末在家享受下午茶。</description>
+      </item>
+      <item>
+        <title>OpenAI 发布新一代 Agent 安全红队评估报告</title>
+        <link>https://mp.weixin.qq.com/s/agent999</link>
+        <description>针对大模型提示注入与越狱攻击的系统性防护策略深度拆解。</description>
+      </item>
+    </channel>
+  </rss>`;
+
+  const buffer = Buffer.from(wechatRssXml, 'utf-8');
+  const wechatKeywords = 'AI, 大模型, 算法, 备案, 安全, 合规, 越狱';
+  const filtered = extractFeed(buffer, 'https://wewe.wilsongo.top/feeds/all.rss', wechatKeywords);
+
+  assert.equal(filtered.length, 2, '仅保留匹配AI安全合规关键词的2篇，手机评测与烘焙文章被过滤');
+  assert.equal(filtered[0].title, '网信办发布深度合成与大模型算法备案最新清单');
+  assert.equal(filtered[1].title, 'OpenAI 发布新一代 Agent 安全红队评估报告');
+});
+

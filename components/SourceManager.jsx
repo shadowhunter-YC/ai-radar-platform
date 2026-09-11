@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import ManualCollection from './ManualCollection';
 
 const DEFAULT_AI_KEYWORDS = 'AI, Artificial Intelligence, Machine Learning, LLM, Generative AI, Deepfake, 算法, 人工智能, 大模型';
+const DEFAULT_WECHAT_KEYWORDS = 'AI, 大模型, 模型, 安全, 治理, 合规, 漏洞, 算法, 深度伪造, 备案, 风险, 幻觉, 注入, 数据安全';
 
 export default function SourceManager() {
   const [sources, setSources] = useState([]);
@@ -15,16 +16,16 @@ export default function SourceManager() {
   const [formData, setFormData] = useState({
     name: '',
     url: '',
-    category: '监管政策',
+    category: '微信公众号',
     description: '',
-    filterKeywords: DEFAULT_AI_KEYWORDS,
+    filterKeywords: DEFAULT_WECHAT_KEYWORDS,
     cadence: '每天',
     enabled: 1
   });
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const categories = ['全部', '监管政策', 'AI安全', '头部厂商', '行业资讯'];
+  const categories = ['全部', '微信公众号', '监管政策', 'AI安全', '头部厂商', '行业资讯'];
 
   async function loadSources() {
     setLoading(true);
@@ -71,15 +72,16 @@ export default function SourceManager() {
     }
   }
 
-  async function handleDelete(id, name) {
-    if (!confirm(`确定要删除订阅源【${name}】吗？`)) return;
+  async function handleDelete(id, name, isWechat = false) {
+    const confirmMsg = isWechat ? `确定取消订阅公众号【${name}】吗？` : `确定要删除订阅源【${name}】吗？`;
+    if (!confirm(confirmMsg)) return;
     if (busy) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/sources?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('删除失败');
+      if (!res.ok) throw new Error('操作失败');
       setSources(prev => prev.filter(s => s.id !== id));
-      setMessage(`已成功删除【${name}】`);
+      setMessage(isWechat ? `已成功取消订阅公众号【${name}】` : `已成功删除【${name}】`);
       setTimeout(() => setMessage(''), 3000);
     } catch (e) {
       setError(e.message);
@@ -118,6 +120,20 @@ export default function SourceManager() {
       category: '监管政策',
       description: '',
       filterKeywords: DEFAULT_AI_KEYWORDS,
+      cadence: '每天',
+      enabled: 1
+    });
+    setModalOpen(true);
+  }
+
+  function openWechatModal() {
+    setEditingFeed(null);
+    setFormData({
+      name: '',
+      url: 'https://wewe.wilsongo.top/feeds/all.rss',
+      category: '微信公众号',
+      description: '微信公众号精选内容（已配置关键词筛选）',
+      filterKeywords: DEFAULT_WECHAT_KEYWORDS,
       cadence: '每天',
       enabled: 1
     });
@@ -198,10 +214,63 @@ export default function SourceManager() {
             <button className="button button--secondary" type="button" onClick={handleReset} disabled={busy}>
               ⚡ 恢复官方预置
             </button>
+            <button
+              className="button"
+              type="button"
+              onClick={openWechatModal}
+              disabled={busy}
+              style={{
+                background: 'rgba(34,197,94,.15)',
+                color: '#4ade80',
+                border: '1px solid rgba(34,197,94,.4)',
+                fontWeight: 500
+              }}
+            >
+              ＋ 订阅微信公众号
+            </button>
             <button className="button button--primary" type="button" onClick={openAddModal} disabled={busy}>
               ＋ 新增 RSS 订阅
             </button>
           </div>
+        </div>
+
+        {/* WeWeRSS 微信公众号转换服务状态条 */}
+        <div style={{
+          marginTop: 16,
+          padding: '12px 16px',
+          background: 'rgba(34,197,94,.06)',
+          border: '1px solid rgba(34,197,94,.22)',
+          borderRadius: 6,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#e2e8f0' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 8px #22c55e' }}></span>
+            <strong>微信公众号转换服务 (WeWeRSS)</strong>
+            <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>已在 NAS 运行 ｜ 访问授权码: radar2026</span>
+          </div>
+          <a
+            href="https://wewe.wilsongo.top/dash"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: 12,
+              color: '#4ade80',
+              textDecoration: 'none',
+              border: '1px solid rgba(34,197,94,.4)',
+              padding: '4px 12px',
+              borderRadius: 4,
+              background: 'rgba(34,197,94,.12)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4
+            }}
+          >
+            打开 WeWeRSS 控制台 ↗
+          </a>
         </div>
 
         {message && <div style={{ background: 'rgba(35,136,255,.15)', borderLeft: '3px solid var(--color-brand)', padding: '10px 14px', borderRadius: 4, marginTop: 14, fontSize: 13, color: '#eaf3ff' }}>{message}</div>}
@@ -289,7 +358,17 @@ export default function SourceManager() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <strong style={{ fontSize: 16, color: '#fff' }}>{source.name}</strong>
-                      <span className="badge badge--neutral" style={{ fontSize: 11 }}>{source.category}</span>
+                      <span
+                        className="badge badge--neutral"
+                        style={{
+                          fontSize: 11,
+                          background: source.category === '微信公众号' ? 'rgba(34,197,94,.15)' : undefined,
+                          color: source.category === '微信公众号' ? '#4ade80' : undefined,
+                          borderColor: source.category === '微信公众号' ? 'rgba(34,197,94,.35)' : undefined
+                        }}
+                      >
+                        {source.category}
+                      </span>
                       {source.cadence && <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>频率: {source.cadence}</span>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -364,10 +443,18 @@ export default function SourceManager() {
                       </button>
                       <button
                         type="button"
-                        style={{ padding: '6px 10px', fontSize: 12, color: '#ff6b72', background: 'transparent', border: '1px solid rgba(255,93,103,.3)', borderRadius: 3, cursor: 'pointer' }}
-                        onClick={() => handleDelete(source.id, source.name)}
+                        style={{
+                          padding: '6px 10px',
+                          fontSize: 12,
+                          color: '#ff6b72',
+                          background: 'transparent',
+                          border: '1px solid rgba(255,93,103,.3)',
+                          borderRadius: 3,
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => handleDelete(source.id, source.name, source.category === '微信公众号')}
                       >
-                        删除
+                        {source.category === '微信公众号' ? '取消订阅' : '删除'}
                       </button>
                     </div>
                   </div>
@@ -386,16 +473,20 @@ export default function SourceManager() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
           <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-strong)', borderRadius: 8, maxWidth: 580, width: '100%', padding: 24, boxShadow: '0 12px 36px rgba(0,0,0,.6)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: 12 }}>
-              <strong style={{ fontSize: 18, color: '#fff' }}>{editingFeed ? '编辑 RSS 订阅源' : '新增 RSS 订阅源'}</strong>
+              <strong style={{ fontSize: 18, color: '#fff' }}>
+                {editingFeed
+                  ? (formData.category === '微信公众号' ? '编辑公众号订阅' : '编辑 RSS 订阅源')
+                  : (formData.category === '微信公众号' ? '订阅微信公众号' : '新增 RSS 订阅源')}
+              </strong>
               <button type="button" onClick={() => setModalOpen(false)} style={{ background: 'transparent', border: 0, color: 'var(--color-text-muted)', fontSize: 22, cursor: 'pointer' }}>×</button>
             </div>
             <form onSubmit={handleSaveFeed} style={{ display: 'grid', gap: 14, marginTop: 16 }}>
               <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
-                <span>来源名称 <strong style={{ color: 'var(--color-danger)' }}>*</strong></span>
+                <span>{formData.category === '微信公众号' ? '公众号名称' : '来源名称'} <strong style={{ color: 'var(--color-danger)' }}>*</strong></span>
                 <input
                   type="text"
                   required
-                  placeholder="例如：NIST AI 风险框架动态"
+                  placeholder={formData.category === '微信公众号' ? '例如：量子位、网信中国、机器之心' : '例如：NIST AI 风险框架动态'}
                   value={formData.name}
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
                   style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff' }}
@@ -403,15 +494,20 @@ export default function SourceManager() {
               </label>
 
               <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
-                <span>RSS / Atom 订阅地址 <strong style={{ color: 'var(--color-danger)' }}>*</strong></span>
+                <span>{formData.category === '微信公众号' ? '公众号 RSS 订阅地址' : 'RSS / Atom 订阅地址'} <strong style={{ color: 'var(--color-danger)' }}>*</strong></span>
                 <input
                   type="url"
                   required
-                  placeholder="https://example.com/feed.xml"
+                  placeholder={formData.category === '微信公众号' ? 'https://wewe.wilsongo.top/feeds/all.rss' : 'https://example.com/feed.xml'}
                   value={formData.url}
                   onChange={e => setFormData({ ...formData, url: e.target.value })}
                   style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff' }}
                 />
+                {formData.category === '微信公众号' && (
+                  <small style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+                    默认拉取 WeWeRSS 聚合源（含所有已扫码关注号），亦可填入单个公众号专属 Feed。
+                  </small>
+                )}
               </label>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -419,9 +515,14 @@ export default function SourceManager() {
                   <span>分类</span>
                   <select
                     value={formData.category}
-                    onChange={e => setFormData({ ...formData, category: e.target.value })}
+                    onChange={e => setFormData({
+                      ...formData,
+                      category: e.target.value,
+                      filterKeywords: e.target.value === '微信公众号' ? DEFAULT_WECHAT_KEYWORDS : formData.filterKeywords
+                    })}
                     style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff' }}
                   >
+                    <option value="微信公众号">微信公众号</option>
                     <option value="监管政策">监管政策</option>
                     <option value="AI安全">AI安全</option>
                     <option value="头部厂商">头部厂商</option>
@@ -447,7 +548,10 @@ export default function SourceManager() {
                   <span>关键词筛选（逗号分隔）</span>
                   <button
                     type="button"
-                    onClick={() => setFormData({ ...formData, filterKeywords: DEFAULT_AI_KEYWORDS })}
+                    onClick={() => setFormData({
+                      ...formData,
+                      filterKeywords: formData.category === '微信公众号' ? DEFAULT_WECHAT_KEYWORDS : DEFAULT_AI_KEYWORDS
+                    })}
                     style={{ background: 'transparent', border: 0, color: 'var(--color-brand)', cursor: 'pointer', fontSize: 12, padding: 0 }}
                   >
                     填入推荐词
@@ -461,7 +565,9 @@ export default function SourceManager() {
                   style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff' }}
                 />
                 <small style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-                  如大型综合安全通报，配置此项可自动过滤无关文章，避免产生噪音。
+                  {formData.category === '微信公众号'
+                    ? '公众号推文多包含泛生活或软硬件资讯，配置此项仅保留与 AI 安全合规相关的推文。'
+                    : '配置此项可自动过滤无关文章，避免产生噪音。'}
                 </small>
               </label>
 
