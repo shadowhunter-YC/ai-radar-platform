@@ -20,12 +20,12 @@ export default function ManualCollection() {
       document.getElementById('manual-collection')?.scrollIntoView({ behavior: 'smooth' });
       run(async () => {
         setDrafts([]); setSelected([]); setErrors([]);
-        setStatus(`正在从【${name || '指定信源'}】读取并应用 AI 安全合规门禁过滤…`);
+        setStatus(`正在从【${name || '指定信源'}】读取文章…`);
         const d = await call({ action: 'crawl_feed', feedId });
         setDrafts(d.drafts || []);
         setSelected((d.drafts || []).map(x => x.id));
         setErrors(d.errors || []);
-        setStatus(`【${name || '指定信源'}】采集完成：获取到 ${d.drafts?.length || 0} 篇通过门禁的文章。`);
+        setStatus(`【${name || '指定信源'}】采集完成：获取到 ${d.drafts?.length || 0} 篇文章。`);
       });
     };
     window.addEventListener('choose-collection-source', choose);
@@ -47,9 +47,9 @@ export default function ManualCollection() {
   }
   const replace = d => setDrafts(previous => previous.map(old => old.id === d.id ? d : old));
   return <section id="manual-collection" className="panel manual-collection">
-    <div className="panel-header"><h2>RSS 智能采集与合规审阅</h2><span className="badge badge--neutral">按需触发 · 双层去噪过滤</span></div>
-    <p style={{color:'var(--color-text-secondary)',fontSize:13,margin:0}}>① 点击上方订阅源「立即采集」或输入RSS地址 → ② 端侧关键词门禁过滤无关内容 → ③ DeepSeek 研判业务影响与合规建议 → ④ 确认入库</p>
-    <p style={{color:'var(--color-text-muted)',fontSize:12,margin:'0 0 4px'}}>每次最多读取3篇文章，每域名冷却10分钟，最多8次网络请求。自动剔除非 AI 相关漏洞，保障情报纯度。</p>
+    <div className="panel-header"><h2>RSS 采集与审阅</h2><span className="badge badge--neutral">按需触发</span></div>
+    <p style={{color:'var(--color-text-secondary)',fontSize:13,margin:0}}>① 点击上方订阅源「立即采集」或输入RSS地址 → ② 关键词筛选过滤无关内容 → ③ 调用 DeepSeek 生成分析与建议 → ④ 确认入库</p>
+    <p style={{color:'var(--color-text-muted)',fontSize:12,margin:'0 0 4px'}}>每次最多读取3篇文章，每域名冷却10分钟，最多8次网络请求。</p>
     <fieldset className="collection-input" disabled={busy}>
       <label>当前采集中地址<input type="url" value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://blogs.microsoft.com/feed/"/></label>
       <button type="button" onClick={()=>setUrl('https://blogs.microsoft.com/feed/')}>微软官方博客</button>

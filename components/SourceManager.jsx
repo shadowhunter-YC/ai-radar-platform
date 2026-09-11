@@ -190,15 +190,9 @@ export default function SourceManager() {
       <div className="panel" style={{ padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, borderBottom: '1px solid var(--color-border)', paddingBottom: 16 }}>
           <div>
-            <div style={{ fontSize: 12, color: 'var(--color-brand)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-              情报信源中心 · NAS 持久化
-            </div>
-            <h2 style={{ margin: '6px 0 0', fontSize: 22, color: '#fff' }}>
-              官方权威与自定义 RSS 订阅
+            <h2 style={{ margin: 0, fontSize: 22, color: '#fff' }}>
+              RSS 订阅源
             </h2>
-            <p style={{ margin: '6px 0 0', color: 'var(--color-text-secondary)', fontSize: 13 }}>
-              支持国内外监管合规、AI安全攻防与大模型实验室订阅管理，内置双层 AI 安全过滤，剔除非 AI 干扰。
-            </p>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button className="button button--secondary" type="button" onClick={handleReset} disabled={busy}>
@@ -333,7 +327,7 @@ export default function SourceManager() {
 
                   {/* 过滤关键词标签 */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 12 }}>
-                    <span style={{ color: 'var(--color-brand)' }}>🎯 AI去噪门禁:</span>
+                    <span style={{ color: 'var(--color-brand)' }}>关键词筛选：</span>
                     {keywords.length > 0 ? (
                       keywords.map(kw => (
                         <span key={kw} style={{ background: 'rgba(35,136,255,.12)', color: '#8ec5fc', padding: '1px 6px', borderRadius: 3, fontSize: 11, border: '1px solid rgba(35,136,255,.25)' }}>
@@ -450,7 +444,7 @@ export default function SourceManager() {
 
               <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>🎯 AI安全去噪关键词（逗号分隔）</span>
+                  <span>关键词筛选（逗号分隔）</span>
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, filterKeywords: DEFAULT_AI_KEYWORDS })}
@@ -467,7 +461,7 @@ export default function SourceManager() {
                   style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff' }}
                 />
                 <small style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-                  如 CISA 等大型综合通报，配置此项可自动阻断非 AI 漏洞，节约流量与 DeepSeek 额度。
+                  如大型综合安全通报，配置此项可自动过滤无关文章，避免产生噪音。
                 </small>
               </label>
 

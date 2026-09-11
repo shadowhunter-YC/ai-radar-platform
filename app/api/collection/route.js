@@ -58,7 +58,7 @@ export async function POST(request) {
     const drafts = [], errors = [], claimed = new Set([host]);
     const entries = extractFeed(buffer, url, filterKeywords);
     if (!entries.length) {
-      if (filterKeywords) throw new Error('该订阅源当前没有匹配“AI安全与合规”关键词的最新文章。');
+      if (filterKeywords) throw new Error('该订阅源当前没有匹配所设关键词的文章。');
       throw new Error('订阅源没有可读取的HTTPS文章。');
     }
     for (const entry of entries) {

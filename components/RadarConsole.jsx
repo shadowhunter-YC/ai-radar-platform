@@ -17,9 +17,9 @@ const navItems = [
 
 const pageMeta = {
   overview: {
-    eyebrow: "AI Intelligence Radar",
+    eyebrow: "",
     title: "AI情报雷达平台",
-    description: "聚合公开AI信息源，快速识别AI产品、AI事件、防护方案、行业应用与合规变化。"
+    description: ""
   },
   sources: {
     eyebrow: "来源管理",
@@ -169,9 +169,7 @@ export default function RadarConsole({ initialArticleId, initialState, view = "o
             <NavIcon name="radar" />
           </span>
           <span>
-            <span className="label">AI INTELLIGENCE RADAR</span>
             <strong>AI情报雷达平台</strong>
-            <small>AI Intelligence Radar Platform</small>
           </span>
         </div>
         <nav className="app-sidebar__nav">
@@ -299,9 +297,9 @@ function PageIntro({ meta, view, onReset }) {
   return (
     <section className={`page-header ${view === "overview" ? "page-header--overview" : ""}`}>
       <div className="page-header__body">
-        <p className="page-header__eyebrow">{meta.eyebrow}</p>
+        {meta.eyebrow ? <p className="page-header__eyebrow">{meta.eyebrow}</p> : null}
         <h1 className="page-header__title">{meta.title}</h1>
-        <p className="page-header__description">{meta.description}</p>
+        {meta.description ? <p className="page-header__description">{meta.description}</p> : null}
       </div>
       <div className="page-header__actions">
         {view === "overview" ? (
