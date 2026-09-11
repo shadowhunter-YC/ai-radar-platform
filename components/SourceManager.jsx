@@ -25,6 +25,28 @@ export default function SourceManager() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
+  // 微信公众号 WeRSS 相关状态
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [qrStatusText, setQrStatusText] = useState('');
+  const [qrStatusType, setQrStatusType] = useState('idle'); // idle | waiting | scanned | success | error
+
+  const [wechatModalOpen, setWechatModalOpen] = useState(false);
+  const [wechatSearchKw, setWechatSearchKw] = useState('');
+  const [wechatSearching, setWechatSearching] = useState(false);
+  const [wechatResults, setWechatResults] = useState([]);
+  const [wechatKeywords, setWechatKeywords] = useState(DEFAULT_WECHAT_KEYWORDS);
+  const [subscribingId, setSubscribingId] = useState(null);
+  const [wechatSubSuccess, setWechatSubSuccess] = useState('');
+  const [wechatManualMode, setWechatManualMode] = useState(false);
+  const [wechatManualFeed, setWechatManualFeed] = useState({
+    name: '',
+    url: '',
+    description: '',
+    filterKeywords: DEFAULT_WECHAT_KEYWORDS
+  });
+
   const categories = ['全部', '微信公众号', '监管政策', 'AI安全', '头部厂商', '行业资讯'];
 
   async function loadSources() {
@@ -126,20 +148,6 @@ export default function SourceManager() {
     setModalOpen(true);
   }
 
-  function openWechatModal() {
-    setEditingFeed(null);
-    setFormData({
-      name: '',
-      url: 'https://wewe.wilsongo.top/feeds/all.rss',
-      category: '微信公众号',
-      description: '微信公众号精选内容（已配置关键词筛选）',
-      filterKeywords: DEFAULT_WECHAT_KEYWORDS,
-      cadence: '每天',
-      enabled: 1
-    });
-    setModalOpen(true);
-  }
-
   function openEditModal(feed) {
     setEditingFeed(feed);
     setFormData({
@@ -189,6 +197,189 @@ export default function SourceManager() {
     }
   }
 
+  // 微信公众平台扫码相关
+  async function fetchQrCode() {
+    setQrLoading(true);
+    setQrStatusType('waiting');
+    setQrStatusText('正在生成微信公众平台授权二维码…');
+    try {
+      const res = await fetch('/api/wechat?action=qr');
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '获取二维码失败，请确认 WeRSS 运行状态');
+      }
+      if (data.qrDataUrl) {
+        setQrDataUrl(data.qrDataUrl);
+        setQrStatusText('请使用微信扫码授权（需开通过微信公众平台的账号）');
+      } else {
+        throw new Error('未获取到有效二维码图片');
+      }
+    } catch (e) {
+      setQrStatusType('error');
+      setQrStatusText(e.message || '获取二维码失败');
+    } finally {
+      setQrLoading(false);
+    }
+  }
+
+  function openQrModal() {
+    setQrModalOpen(true);
+    setQrDataUrl('');
+    fetchQrCode();
+  }
+
+  // 微信扫码状态轮询
+  useEffect(() => {
+    let timer = null;
+    if (qrModalOpen && qrStatusType !== 'success') {
+      timer = setInterval(async () => {
+        try {
+          const res = await fetch('/api/wechat?action=status');
+          if (res.ok) {
+            const data = await res.json();
+            const s = data.data;
+            if (s) {
+              if (s.is_login || s.status === 'success' || s.status === 'ok') {
+                setQrStatusType('success');
+                setQrStatusText('✅ 微信公众平台授权成功！账号已就绪。');
+                clearInterval(timer);
+              } else if (s.status === 'scanned' || (s.msg && s.msg.includes('扫码'))) {
+                setQrStatusType('scanned');
+                setQrStatusText('📲 已扫描二维码，请在手机微信端点击【确认登录】');
+              } else if (s.status === 'expired') {
+                setQrStatusType('error');
+                setQrStatusText('⏰ 二维码已失效，请点击刷新');
+              }
+            }
+          }
+        } catch {
+          // ignore network hiccups
+        }
+      }, 2500);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [qrModalOpen, qrStatusType]);
+
+  // 微信公众号订阅 Modal 控制
+  function openWechatModal() {
+    setWechatSearchKw('');
+    setWechatResults([]);
+    setWechatSubSuccess('');
+    setWechatManualMode(false);
+    setWechatKeywords(DEFAULT_WECHAT_KEYWORDS);
+    setWechatManualFeed({
+      name: '',
+      url: '',
+      description: '',
+      filterKeywords: DEFAULT_WECHAT_KEYWORDS
+    });
+    setWechatModalOpen(true);
+  }
+
+  async function handleSearchWechat(e) {
+    if (e) e.preventDefault();
+    const kw = wechatSearchKw.trim();
+    if (!kw) return;
+    setWechatSearching(true);
+    setWechatSubSuccess('');
+    try {
+      const res = await fetch('/api/wechat?action=search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kw })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '检索公众号失败');
+      }
+      setWechatResults(data.data || []);
+      if (!data.data || data.data.length === 0) {
+        setMessage('未搜索到公众号，请检查名称或切换至下方手动添加');
+      }
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setWechatSearching(false);
+    }
+  }
+
+  async function handleSubscribeMp(mp) {
+    const mpId = mp.mp_id || mp.fakeid || mp.id || mp.nickname || mp.name;
+    const mpName = mp.mp_name || mp.nickname || mp.name;
+    const mpCover = mp.mp_cover || mp.avatar || mp.round_head_img || '';
+    const mpIntro = mp.mp_intro || mp.signature || '';
+
+    setSubscribingId(mpId);
+    try {
+      const res = await fetch('/api/wechat?action=subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: mpId,
+          name: mpName,
+          cover: mpCover,
+          intro: mpIntro,
+          filterKeywords: wechatKeywords
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '订阅公众号失败');
+      }
+      if (data.feed) {
+        setSources(prev => {
+          const exists = prev.some(s => s.id === data.feed.id);
+          return exists ? prev.map(s => s.id === data.feed.id ? data.feed : s) : [data.feed, ...prev];
+        });
+        setWechatSubSuccess(`已成功订阅【${mpName}】！已自动开启 AI 安全关键词门禁。`);
+        setTimeout(() => setWechatSubSuccess(''), 4000);
+      }
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSubscribingId(null);
+    }
+  }
+
+  async function handleSaveManualWechatFeed(e) {
+    e.preventDefault();
+    if (!wechatManualFeed.name.trim() || !wechatManualFeed.url.trim()) {
+      alert('公众号名称与订阅地址均为必填项');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch('/api/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save',
+          feed: {
+            ...wechatManualFeed,
+            category: '微信公众号',
+            cadence: '每天',
+            enabled: 1
+          }
+        })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || '保存订阅源失败');
+      }
+      const data = await res.json();
+      setSources(prev => [data.feed, ...prev]);
+      setMessage(`已成功订阅公众号【${data.feed.name}】`);
+      setWechatModalOpen(false);
+      setTimeout(() => setMessage(''), 3000);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function triggerCollect(source) {
     window.dispatchEvent(new CustomEvent('trigger-feed-collection', {
       detail: {
@@ -215,15 +406,32 @@ export default function SourceManager() {
               ⚡ 恢复官方预置
             </button>
             <button
+              className="button button--secondary"
+              type="button"
+              onClick={openQrModal}
+              disabled={busy}
+              style={{
+                background: 'rgba(34,197,94,.12)',
+                color: '#4ade80',
+                border: '1px solid rgba(34,197,94,.4)',
+                fontWeight: 500,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6
+              }}
+            >
+              📱 微信扫码绑定
+            </button>
+            <button
               className="button"
               type="button"
               onClick={openWechatModal}
               disabled={busy}
               style={{
-                background: 'rgba(34,197,94,.15)',
-                color: '#4ade80',
-                border: '1px solid rgba(34,197,94,.4)',
-                fontWeight: 500
+                background: 'rgba(34,197,94,.22)',
+                color: '#86efac',
+                border: '1px solid rgba(34,197,94,.55)',
+                fontWeight: 600
               }}
             >
               ＋ 订阅微信公众号
@@ -234,7 +442,7 @@ export default function SourceManager() {
           </div>
         </div>
 
-        {/* WeWeRSS 微信公众号转换服务状态条 */}
+        {/* WeRSS 微信公众号服务状态条 */}
         <div style={{
           marginTop: 16,
           padding: '12px 16px',
@@ -249,28 +457,45 @@ export default function SourceManager() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#e2e8f0' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 8px #22c55e' }}></span>
-            <strong>微信公众号转换服务 (WeWeRSS)</strong>
-            <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>已在 NAS 运行 ｜ 访问授权码: radar2026</span>
+            <strong>微信公众号转换服务 (WeRSS)</strong>
+            <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>已在 NAS 运行 ｜ 支持免跳出微信扫码与公众号搜索订阅</span>
           </div>
-          <a
-            href="https://wewe.wilsongo.top/dash"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              fontSize: 12,
-              color: '#4ade80',
-              textDecoration: 'none',
-              border: '1px solid rgba(34,197,94,.4)',
-              padding: '4px 12px',
-              borderRadius: 4,
-              background: 'rgba(34,197,94,.12)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4
-            }}
-          >
-            打开 WeWeRSS 控制台 ↗
-          </a>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              type="button"
+              onClick={openQrModal}
+              style={{
+                fontSize: 12,
+                color: '#4ade80',
+                border: '1px solid rgba(34,197,94,.4)',
+                padding: '4px 10px',
+                borderRadius: 4,
+                background: 'rgba(34,197,94,.12)',
+                cursor: 'pointer'
+              }}
+            >
+              📱 微信扫码授权
+            </button>
+            <a
+              href="https://wewe.wilsongo.top"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontSize: 12,
+                color: 'var(--color-text-muted)',
+                textDecoration: 'none',
+                border: '1px solid var(--color-border)',
+                padding: '4px 10px',
+                borderRadius: 4,
+                background: 'rgba(255,255,255,.05)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4
+              }}
+            >
+              打开 WeRSS 后台 ↗
+            </a>
+          </div>
         </div>
 
         {message && <div style={{ background: 'rgba(35,136,255,.15)', borderLeft: '3px solid var(--color-brand)', padding: '10px 14px', borderRadius: 4, marginTop: 14, fontSize: 13, color: '#eaf3ff' }}>{message}</div>}
@@ -329,7 +554,7 @@ export default function SourceManager() {
         {loading ? (
           <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--color-text-muted)' }}>正在加载 NAS 订阅源…</div>
         ) : filteredSources.length === 0 ? (
-          <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--color-text-muted)' }}>当前分类下暂无订阅源，可点击上方「＋ 新增」或「恢复官方预置」。</div>
+          <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--color-text-muted)' }}>当前分类下暂无订阅源，可点击上方「＋ 订阅微信公众号」或「恢复官方预置」。</div>
         ) : (
           <div style={{ display: 'grid', gap: 12 }}>
             {filteredSources.map(source => {
@@ -468,25 +693,286 @@ export default function SourceManager() {
       {/* 下方嵌入智能采集与审阅工作区 */}
       <ManualCollection />
 
-      {/* 新增 / 编辑订阅源 Modal */}
+      {/* 微信公众平台扫码授权绑定 Modal */}
+      {qrModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 16 }}>
+          <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-strong)', borderRadius: 10, maxWidth: 440, width: '100%', padding: 24, boxShadow: '0 16px 40px rgba(0,0,0,.7)', textAlign: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: 12, marginBottom: 16 }}>
+              <div style={{ textAlign: 'left' }}>
+                <strong style={{ fontSize: 17, color: '#fff' }}>微信公众平台授权绑定</strong>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>扫码后 WeRSS 将通过公众平台接口检索并转换文章</p>
+              </div>
+              <button type="button" onClick={() => setQrModalOpen(false)} style={{ background: 'transparent', border: 0, color: 'var(--color-text-muted)', fontSize: 24, cursor: 'pointer' }}>×</button>
+            </div>
+
+            {/* 二维码展示区域 */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 230, padding: '16px 0' }}>
+              {qrLoading ? (
+                <div style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>正在加载二维码…</div>
+              ) : qrDataUrl ? (
+                <div style={{ background: '#fff', padding: 12, borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,.3)' }}>
+                  <img src={qrDataUrl} alt="WeRSS 微信授权二维码" style={{ width: 200, height: 200, display: 'block' }} />
+                </div>
+              ) : (
+                <div style={{ color: '#ff6b72', fontSize: 14 }}>{qrStatusText || '暂无二维码'}</div>
+              )}
+
+              {/* 实时状态提示 */}
+              <div style={{
+                marginTop: 16,
+                fontSize: 13,
+                padding: '6px 14px',
+                borderRadius: 4,
+                background: qrStatusType === 'success' ? 'rgba(34,197,94,.15)' : qrStatusType === 'error' ? 'rgba(255,93,103,.15)' : 'rgba(35,136,255,.15)',
+                color: qrStatusType === 'success' ? '#4ade80' : qrStatusType === 'error' ? '#ff858d' : '#8ec5fc',
+                border: '1px solid',
+                borderColor: qrStatusType === 'success' ? 'rgba(34,197,94,.3)' : qrStatusType === 'error' ? 'rgba(255,93,103,.3)' : 'rgba(35,136,255,.3)'
+              }}>
+                {qrStatusText || '等待微信扫码…'}
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,.03)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '10px 14px', fontSize: 12, color: 'var(--color-text-muted)', textAlign: 'left', lineHeight: 1.5, marginTop: 8 }}>
+              💡 <strong>提示：</strong> 请使用已在微信公众平台注册（个人订阅号即可，微信官方免费秒开通）的微信号扫码确认。
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 20 }}>
+              <button className="button button--secondary" type="button" onClick={fetchQrCode} disabled={qrLoading} style={{ fontSize: 13 }}>
+                🔄 刷新二维码
+              </button>
+              <button className="button button--primary" type="button" onClick={() => setQrModalOpen(false)} style={{ fontSize: 13 }}>
+                {qrStatusType === 'success' ? '完成' : '关闭'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 订阅微信公众号 Modal (带搜索 + 关键词门禁) */}
+      {wechatModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1050, padding: 16 }}>
+          <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-strong)', borderRadius: 8, maxWidth: 640, width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: 24, boxShadow: '0 16px 40px rgba(0,0,0,.65)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: 12 }}>
+              <div>
+                <strong style={{ fontSize: 18, color: '#fff' }}>订阅微信公众号</strong>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>检索公众号一键订阅并配置 AI 安全合规关键词门禁</p>
+              </div>
+              <button type="button" onClick={() => setWechatModalOpen(false)} style={{ background: 'transparent', border: 0, color: 'var(--color-text-muted)', fontSize: 24, cursor: 'pointer' }}>×</button>
+            </div>
+
+            {wechatSubSuccess && (
+              <div style={{ background: 'rgba(34,197,94,.15)', borderLeft: '3px solid #22c55e', padding: '10px 14px', borderRadius: 4, marginTop: 14, fontSize: 13, color: '#86efac' }}>
+                {wechatSubSuccess}
+              </div>
+            )}
+
+            {!wechatManualMode ? (
+              <div style={{ display: 'grid', gap: 16, marginTop: 16 }}>
+                {/* 搜索框 */}
+                <form onSubmit={handleSearchWechat} style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="text"
+                    required
+                    placeholder="输入微信公众号名称（例如：量子位、网信中国、机器之心）"
+                    value={wechatSearchKw}
+                    onChange={e => setWechatSearchKw(e.target.value)}
+                    style={{ flex: 1, minHeight: 38, padding: '8px 12px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff', fontSize: 14 }}
+                  />
+                  <button className="button button--primary" type="submit" disabled={wechatSearching} style={{ whiteSpace: 'nowrap', padding: '0 18px' }}>
+                    {wechatSearching ? '搜索中…' : '🔍 搜索公众号'}
+                  </button>
+                </form>
+
+                {/* AI 安全合规门禁设置 */}
+                <div style={{ background: 'rgba(35,136,255,.05)', border: '1px solid rgba(35,136,255,.2)', borderRadius: 6, padding: '12px 14px', display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: '#93c5fd' }}>🎯 关键词筛选门禁（仅同步符合以下特征的推文）：</span>
+                    <button
+                      type="button"
+                      onClick={() => setWechatKeywords(DEFAULT_WECHAT_KEYWORDS)}
+                      style={{ background: 'transparent', border: 0, color: 'var(--color-brand)', cursor: 'pointer', fontSize: 12, padding: 0 }}
+                    >
+                      填入推荐词
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={wechatKeywords}
+                    onChange={e => setWechatKeywords(e.target.value)}
+                    placeholder="留空全量接收，输入关键词以逗号分隔"
+                    style={{ minHeight: 34, padding: '6px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff', fontSize: 12 }}
+                  />
+                  <small style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>
+                    微信公众号推文通常涵盖科技、硬件或日常动态，配置关键词筛选后，未提及 AI/大模型/安全/合规 的推文将被自动剔除。
+                  </small>
+                </div>
+
+                {/* 搜索结果列表 */}
+                {wechatSearching ? (
+                  <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--color-text-muted)' }}>正在微信公众平台检索…</div>
+                ) : wechatResults.length > 0 ? (
+                  <div style={{ display: 'grid', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
+                    {wechatResults.map(mp => {
+                      const id = mp.mp_id || mp.fakeid || mp.id || mp.nickname || mp.name;
+                      const name = mp.mp_name || mp.nickname || mp.name;
+                      const cover = mp.mp_cover || mp.avatar || mp.round_head_img;
+                      const intro = mp.mp_intro || mp.signature || '';
+                      const isSubscribing = subscribingId === id;
+
+                      return (
+                        <div
+                          key={id}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: 12,
+                            padding: '12px 14px',
+                            background: 'var(--color-surface-strong)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 6
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                            {cover ? (
+                              <img src={cover} alt={name} style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover', background: '#333' }} />
+                            ) : (
+                              <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(34,197,94,.2)', color: '#4ade80', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                                {name.slice(0, 1)}
+                              </div>
+                            )}
+                            <div style={{ minWidth: 0 }}>
+                              <strong style={{ fontSize: 14, color: '#fff', display: 'block' }}>{name}</strong>
+                              {intro && <span style={{ fontSize: 12, color: 'var(--color-text-muted)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{intro}</span>}
+                            </div>
+                          </div>
+                          <button
+                            className="button button--primary"
+                            type="button"
+                            onClick={() => handleSubscribeMp(mp)}
+                            disabled={isSubscribing}
+                            style={{
+                              padding: '6px 14px',
+                              fontSize: 12,
+                              whiteSpace: 'nowrap',
+                              background: 'rgba(34,197,94,.2)',
+                              color: '#86efac',
+                              borderColor: 'rgba(34,197,94,.5)'
+                            }}
+                          >
+                            {isSubscribing ? '正在订阅…' : '＋ 一键订阅'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                    输入公众号名称并点击「搜索」，直接一键加入雷达监控。
+                  </div>
+                )}
+
+                {/* 切换到手动添加 */}
+                <div style={{ textAlign: 'center', borderTop: '1px solid var(--color-border)', paddingTop: 14 }}>
+                  <button
+                    type="button"
+                    onClick={() => setWechatManualMode(true)}
+                    style={{ background: 'transparent', border: 0, color: '#86beff', cursor: 'pointer', fontSize: 12, textDecoration: 'underline' }}
+                  >
+                    找不到公众号？切换为手动输入微信 RSS 链接添加 ↗
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* 手动输入公众号 RSS 模式 */
+              <form onSubmit={handleSaveManualWechatFeed} style={{ display: 'grid', gap: 14, marginTop: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, color: '#93c5fd' }}>手动配置微信公众号 Feed</span>
+                  <button
+                    type="button"
+                    onClick={() => setWechatManualMode(false)}
+                    style={{ background: 'transparent', border: 0, color: 'var(--color-brand)', cursor: 'pointer', fontSize: 12, textDecoration: 'underline' }}
+                  >
+                    ← 返回搜索公众号
+                  </button>
+                </div>
+
+                <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+                  <span>公众号名称 <strong style={{ color: 'var(--color-danger)' }}>*</strong></span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="例如：网信中国、量子位"
+                    value={wechatManualFeed.name}
+                    onChange={e => setWechatManualFeed({ ...wechatManualFeed, name: e.target.value })}
+                    style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff' }}
+                  />
+                </label>
+
+                <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+                  <span>微信公众号 RSS 地址 <strong style={{ color: 'var(--color-danger)' }}>*</strong></span>
+                  <input
+                    type="url"
+                    required
+                    placeholder="https://wewe.wilsongo.top/feed/xxxxxx.xml"
+                    value={wechatManualFeed.url}
+                    onChange={e => setWechatManualFeed({ ...wechatManualFeed, url: e.target.value })}
+                    style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff' }}
+                  />
+                </label>
+
+                <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+                  <span>关键词筛选（逗号分隔）</span>
+                  <input
+                    type="text"
+                    value={wechatManualFeed.filterKeywords}
+                    onChange={e => setWechatManualFeed({ ...wechatManualFeed, filterKeywords: e.target.value })}
+                    style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff' }}
+                  />
+                </label>
+
+                <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+                  <span>说明备注</span>
+                  <input
+                    type="text"
+                    placeholder="例如：行业合规资讯"
+                    value={wechatManualFeed.description}
+                    onChange={e => setWechatManualFeed({ ...wechatManualFeed, description: e.target.value })}
+                    style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff' }}
+                  />
+                </label>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8, borderTop: '1px solid var(--color-border)', paddingTop: 14 }}>
+                  <button className="button button--secondary" type="button" onClick={() => setWechatModalOpen(false)}>
+                    取消
+                  </button>
+                  <button className="button button--primary" type="submit" disabled={busy}>
+                    {busy ? '正在保存…' : '保存订阅'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 常规新增 / 编辑订阅源 Modal */}
       {modalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
           <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-strong)', borderRadius: 8, maxWidth: 580, width: '100%', padding: 24, boxShadow: '0 12px 36px rgba(0,0,0,.6)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: 12 }}>
               <strong style={{ fontSize: 18, color: '#fff' }}>
-                {editingFeed
-                  ? (formData.category === '微信公众号' ? '编辑公众号订阅' : '编辑 RSS 订阅源')
-                  : (formData.category === '微信公众号' ? '订阅微信公众号' : '新增 RSS 订阅源')}
+                {editingFeed ? '编辑 RSS 订阅源' : '新增 RSS 订阅源'}
               </strong>
               <button type="button" onClick={() => setModalOpen(false)} style={{ background: 'transparent', border: 0, color: 'var(--color-text-muted)', fontSize: 22, cursor: 'pointer' }}>×</button>
             </div>
             <form onSubmit={handleSaveFeed} style={{ display: 'grid', gap: 14, marginTop: 16 }}>
               <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
-                <span>{formData.category === '微信公众号' ? '公众号名称' : '来源名称'} <strong style={{ color: 'var(--color-danger)' }}>*</strong></span>
+                <span>来源名称 <strong style={{ color: 'var(--color-danger)' }}>*</strong></span>
                 <input
                   type="text"
                   required
-                  placeholder={formData.category === '微信公众号' ? '例如：量子位、网信中国、机器之心' : '例如：NIST AI 风险框架动态'}
+                  placeholder="例如：NIST AI 风险框架动态、OpenAI 安全博客"
                   value={formData.name}
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
                   style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff' }}
@@ -494,20 +980,15 @@ export default function SourceManager() {
               </label>
 
               <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
-                <span>{formData.category === '微信公众号' ? '公众号 RSS 订阅地址' : 'RSS / Atom 订阅地址'} <strong style={{ color: 'var(--color-danger)' }}>*</strong></span>
+                <span>RSS / Atom 订阅地址 <strong style={{ color: 'var(--color-danger)' }}>*</strong></span>
                 <input
                   type="url"
                   required
-                  placeholder={formData.category === '微信公众号' ? 'https://wewe.wilsongo.top/feeds/all.rss' : 'https://example.com/feed.xml'}
+                  placeholder="https://example.com/feed.xml"
                   value={formData.url}
                   onChange={e => setFormData({ ...formData, url: e.target.value })}
                   style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff' }}
                 />
-                {formData.category === '微信公众号' && (
-                  <small style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-                    默认拉取 WeWeRSS 聚合源（含所有已扫码关注号），亦可填入单个公众号专属 Feed。
-                  </small>
-                )}
               </label>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -565,9 +1046,7 @@ export default function SourceManager() {
                   style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: '#fff' }}
                 />
                 <small style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-                  {formData.category === '微信公众号'
-                    ? '公众号推文多包含泛生活或软硬件资讯，配置此项仅保留与 AI 安全合规相关的推文。'
-                    : '配置此项可自动过滤无关文章，避免产生噪音。'}
+                  配置关键词筛选后，仅抓取命中关键词的推文或文章，避免产生无关噪音。
                 </small>
               </label>
 

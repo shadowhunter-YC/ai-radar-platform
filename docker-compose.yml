@@ -18,6 +18,10 @@ services:
       - SILICONFLOW_MODEL=${SILICONFLOW_MODEL:-deepseek-ai/DeepSeek-V4-Pro}
       - COLLECTION_DATA_DIR=/app/data
       - DATABASE_URL=${DATABASE_URL:-}
+      - WECHAT_RSS_BASE_URL=${WECHAT_RSS_BASE_URL:-http://192.168.1.107:8001}
+      - WECHAT_RSS_PUBLIC_URL=${WECHAT_RSS_PUBLIC_URL:-https://wewe.wilsongo.top}
+      - WECHAT_RSS_ADMIN_USER=${WECHAT_RSS_ADMIN_USER:-admin}
+      - WECHAT_RSS_ADMIN_PASS=${WECHAT_RSS_ADMIN_PASS:-admin@123}
     volumes:
       - ./data:/app/data
     healthcheck:
