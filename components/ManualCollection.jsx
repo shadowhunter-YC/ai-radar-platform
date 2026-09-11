@@ -32,7 +32,7 @@ export default function ManualCollection() {
     <fieldset className="collection-input" disabled={busy}>
       <label>RSS / Atom订阅地址<input type="url" value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://blogs.microsoft.com/feed/"/></label>
       <button type="button" onClick={()=>setUrl('https://blogs.microsoft.com/feed/')}>填入微软官方博客订阅</button>
-      <button className="button button--primary" type="button" onClick={()=>run(async()=>{ setDrafts([]); setSelected([]); setErrors([]); setStatus('正在检查站点规则并读取RSS内容，请等待…'); const d=await call({action:'rss',url}); setDrafts(d.drafts); setSelected(d.drafts.map(x=>x.id)); setErrors(d.errors || []); setStatus(`读取结束：${d.drafts.length}篇可预览，${d.requests}次网页请求${d.cached?'，已复用缓存':''}。尚未调用AI、尚未入库。`); })}>读取RSS（暂不调用AI）</button>
+      <button className="button button--primary" type="button" onClick={()=>run(async()=>{ setDrafts([]); setSelected([]); setErrors([]); setStatus('正在检查站点规则并读取RSS内容，请等待…'); const d=await call({action:'rss',url}); setDrafts(d.drafts); setSelected(d.drafts.map(x=>x.id)); setErrors(d.errors || []); setStatus(`读取结束：${d.drafts.length}篇可预览，${d.requests}次网页请求${d.cached?'，已复用缓存':''}。尚未调用AI、尚未入库。`); })}>点击获取RSS订阅</button>
     </fieldset>
     <p role="status">{status}</p>{error&&<p style={{color:'#ffadb3',fontSize:12}} role="alert">{error}</p>}{errors.map((e,i)=><p style={{color:'#ffadb3',fontSize:12}} key={i}>{e.title}：{e.error}</p>)}
     {drafts.length>0 && <>
