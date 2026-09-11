@@ -95,7 +95,14 @@ export default function DailyReports({ articles, mode }) {
   const controller = useRef(null);
   useEffect(() => {
     setPrefs(prev => ({ ...DEFAULT_PREFERENCES, ...read(PREFS, DEFAULT_PREFERENCES), ...(prev.tags?.length && prev !== DEFAULT_PREFERENCES ? prev : {}) }));
-    fetch('/api/reports').then(r => r.json()).then(c => { setConfig(c); setReady(true); }).catch(() => setConfig({ configured: false }));
+    fetch('/api/reports').then(r => r.json()).then(c => {
+      setConfig(c); setReady(true);
+      if (Array.isArray(c.reports) && c.reports.length) {
+        setSaved(c.reports);
+        setReport(prev => prev || c.reports[0]);
+        save(HISTORY, c.reports);
+      }
+    }).catch(() => setConfig({ configured: false }));
   }, []);
   useEffect(() => { save(PREFS, prefs); }, [prefs]);
   const availableTags = useMemo(
@@ -104,15 +111,75 @@ export default function DailyReports({ articles, mode }) {
   );
 
   useEffect(() => {
-    const stored = history(); setSaved(stored); setReport(stored[0] || null);
-    const sync = () => { const list = history(); setSaved(list); if (list.length && !report) setReport(list[0]); };
+    const stored = history();
+    if (!saved.length && stored.length) {
+      setSaved(stored);
+      if (!report) setReport(stored[0]);
+    }
+    const sync = () => {
+      const list = history();
+      if (list.length) { setSaved(list); if (!report) setReport(list[0]); }
+    };
     window.addEventListener('storage', sync); window.addEventListener('daily-reports-change', sync);
     return () => { window.removeEventListener('storage', sync); window.removeEventListener('daily-reports-change', sync); };
-  }, [report]);
+  }, [report, saved.length]);
   useEffect(() => { return () => controller.current?.abort(); }, []);
 
   const matches = useMemo(() => filterReportArticles(articles, prefs), [articles, prefs]);
   const autoIds = useMemo(() => matches.slice(0, prefs.limit || 20).map(a => a.id), [matches, prefs.limit]);
+
+  function exportObsidian(targetReport) {
+    const r = targetReport || report;
+    if (!r) return;
+    const d = new Date(r.createdAt || Date.now());
+    const dateStr = Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : '未知日期';
+    const timeStr = Number.isFinite(d.getTime()) ? d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '';
+    const md = `---
+title: "AI安全与合规情报日报 - ${dateStr}"
+date: ${d.toISOString()}
+tags:
+  - AI安全
+  - AI合规治理
+  - 定制日报
+model: "${r.model || 'DeepSeek'}"
+source_count: ${r.sources?.length || 0}
+mode: "${r.mode || 'auto'}"
+---
+
+# AI安全与合规情报日报 (${dateStr})
+
+> **生成时间**：${timeStr}  
+> **模型**：${r.model || 'DeepSeek'} | **模式**：${reportModeLabel(r.mode)}
+
+${r.content}
+
+## 📚 引用素材与信源清单
+${(r.sources || []).map(s => `- [${s.number}] **${s.title}**\n  - 来源: \`${s.source || '未知'}\`\n  - 链接: ${s.url || '未提供'}`).join('\n')}
+`;
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `AI安全合规日报-${dateStr}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setNotice('已导出 Obsidian 格式 Markdown 笔记！');
+  }
+
+  async function removeReport(e, id) {
+    e.stopPropagation();
+    if (!confirm('确定要删除这份历史日报吗？')) return;
+    try {
+      await fetch(`/api/reports?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const next = saved.filter(r => String(r.id) !== String(id));
+      setSaved(next);
+      save(HISTORY, next);
+      if (String(report?.id) === String(id)) setReport(next[0] || null);
+      setNotice('已删除该份历史日报。');
+    } catch { setError('删除失败，请稍后重试。'); }
+  }
 
   async function generate() {
     if (!ready || busy || config?.configured !== true) return;
@@ -122,7 +189,7 @@ export default function DailyReports({ articles, mode }) {
     try {
       const res = await fetch('/api/reports', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ articleIds: autoIds, mode }),
+        body: JSON.stringify({ articleIds: autoIds, mode, preferences: prefs }),
         signal: controller.current.signal
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || '生成失败，请确认模型 API Key 已设置。'); }
@@ -132,9 +199,12 @@ export default function DailyReports({ articles, mode }) {
         const chunk = JSON.parse(line);
         if (chunk.type === 'delta') { content += chunk.text || ''; setDraft(content); continue; }
         if (chunk.type === 'complete') {
-          const record = { id: Date.now(), createdAt: chunk.createdAt, content, sources: chunk.sources || [], mode: chunk.mode || mode, model: chunk.model, preferences: prefs };
-          const all = history(); save(HISTORY, [record, ...all].slice(0, 20));
-          setDraft(''); setReport(record); setStatus('日报已生成并保存。');
+          const record = { id: chunk.id || Date.now(), createdAt: chunk.createdAt, content, sources: chunk.sources || [], mode: chunk.mode || mode, model: chunk.model, preferences: prefs };
+          const all = saved.filter(r => String(r.id) !== String(record.id));
+          const updated = [record, ...all].slice(0, 50);
+          save(HISTORY, updated);
+          setSaved(updated);
+          setDraft(''); setReport(record); setStatus('日报已生成并持久化保存至 NAS。');
         }
         if (chunk.type === 'error') throw new Error(chunk.error);
       }
@@ -188,7 +258,10 @@ export default function DailyReports({ articles, mode }) {
       <div className="panel" style={{display:'flex',flexDirection:'column',gap:20}}>
       <div className="panel-header">
         <h2>{busy ? '正在生成的日报' : '日报全文'}</h2>
-        {report && !busy && <button className="button button--secondary" type="button" onClick={async () => { try { await navigator.clipboard.writeText(`${report.content}\n\n来源\n${report.sources.map(s => `[${s.number}] ${s.title} ${safeSourceUrl(s.url) || ''}`).join('\n')}`); setNotice('日报已复制。'); } catch { setError('复制失败，请选中正文手动复制。'); } }}>复制日报</button>}
+        {report && !busy && <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          <button className="button button--secondary" type="button" onClick={async () => { try { await navigator.clipboard.writeText(`${report.content}\n\n来源\n${report.sources.map(s => `[${s.number}] ${s.title} ${safeSourceUrl(s.url) || ''}`).join('\n')}`); setNotice('日报已复制到剪贴板。'); } catch { setError('复制失败，请选中正文手动复制。'); } }}>复制日报</button>
+          <button className="button button--secondary" type="button" onClick={() => exportObsidian(report)}>导出 Obsidian 笔记</button>
+        </div>}
       </div>
       <p role="status" style={{color:'var(--color-text-secondary)',fontSize:13,margin:0}}>{status}</p>
       {busy || draft ? <>
@@ -212,8 +285,8 @@ export default function DailyReports({ articles, mode }) {
           <h3 style={{fontSize:15}}>历史日报</h3>
           <span className="badge badge--neutral">{saved.length} 份</span>
         </div>
-        <p style={{color:'var(--color-text-muted)',fontSize:12,margin:'0 0 12px'}}>仅当前浏览器可见，最多保留20份；清除浏览器数据会移除记录。</p>
-        <div style={{display:'grid',gap:6}}>{saved.map(r => <button key={r.id} type="button" disabled={busy} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,width:'100%',minHeight:42,padding:'8px 12px',border:'1px solid',borderRadius:2,borderColor:report?.id===r.id?'var(--color-brand-strong)':'var(--color-border)',background:report?.id===r.id?'rgba(35,136,255,.16)':'rgba(5,13,23,.42)',color:report?.id===r.id?'#fff':'var(--color-text-secondary)',cursor:busy?'not-allowed':'pointer',textAlign:'left',fontSize:13,transition:'background .16s ease'}} onClick={() => { setReport(r); setDraft(''); setError(''); setStatus(''); }}><span>{dateLabel(r.createdAt)}</span><span style={{fontSize:12,color:'var(--color-text-muted)'}}>{r.sources.length} 条 · {reportModeLabel(r.mode)}</span></button>)}</div>
+        <p style={{color:'var(--color-text-muted)',fontSize:12,margin:'0 0 12px'}}>已持久化存储至 NAS 数据库，所有设备自动同步；支持随时调阅与一键导出 Obsidian 笔记。</p>
+        <div style={{display:'grid',gap:6}}>{saved.map(r => <div key={r.id} style={{display:'flex',gap:6,alignItems:'center'}}><button type="button" disabled={busy} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flex:1,minHeight:42,padding:'8px 12px',border:'1px solid',borderRadius:2,borderColor:report?.id===r.id?'var(--color-brand-strong)':'var(--color-border)',background:report?.id===r.id?'rgba(35,136,255,.16)':'rgba(5,13,23,.42)',color:report?.id===r.id?'#fff':'var(--color-text-secondary)',cursor:busy?'not-allowed':'pointer',textAlign:'left',fontSize:13,transition:'background .16s ease'}} onClick={() => { setReport(r); setDraft(''); setError(''); setStatus(''); }}><span>{dateLabel(r.createdAt)}</span><span style={{fontSize:12,color:'var(--color-text-muted)'}}>{r.sources?.length || 0} 条 · {reportModeLabel(r.mode)}</span></button><button type="button" title="导出 Obsidian 格式" className="button button--secondary" style={{padding:'6px 10px',minHeight:42,fontSize:12}} onClick={() => exportObsidian(r)}>MD</button><button type="button" title="删除该份历史日报" className="button button--secondary" style={{padding:'6px 10px',minHeight:42,fontSize:12,color:'#ff6b72'}} onClick={e => removeReport(e, r.id)}>✕</button></div>)}</div>
         {!saved.length && <p style={{color:'var(--color-text-muted)',fontSize:13}}>还没有已完成的日报。</p>}
       </div>
     </div>

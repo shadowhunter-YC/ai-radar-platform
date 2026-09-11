@@ -1,0 +1,54 @@
+services:
+  # 主服务：AI 情报雷达平台 (Next.js 15 + Node.js 22)
+  ai-radar:
+    image: ai-radar-platform:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-radar-platform
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-3100}:3000"
+    environment:
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME:-AI情报雷达平台}
+      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY:-}
+      - SILICONFLOW_BASE_URL=${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}
+      - SILICONFLOW_MODEL=${SILICONFLOW_MODEL:-deepseek-ai/DeepSeek-V4-Pro}
+      - COLLECTION_DATA_DIR=/app/data
+      - DATABASE_URL=${DATABASE_URL:-}
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # 可选服务：PostgreSQL 数据库（完整模式下启用）
+  # 启动命令：docker compose --profile postgres up -d
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-radar-postgres
+    restart: unless-stopped
+    profiles:
+      - postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_radar}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

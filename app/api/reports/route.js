@@ -1,11 +1,17 @@
 import { getArticles } from '@/lib/repository';
 import { readSSE, selectedReportMode } from '@/lib/daily-report.mjs';
+import { saveReport, listReports, deleteReport } from '@/lib/collection-store.mjs';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
 const modelName = () => process.env.SILICONFLOW_MODEL || 'deepseek-ai/DeepSeek-V4-Pro';
 export async function GET() {
-  return Response.json({ configured: Boolean(process.env.SILICONFLOW_API_KEY?.trim()), model: modelName() });
+  const reports = listReports(50);
+  return Response.json({
+    configured: Boolean(process.env.SILICONFLOW_API_KEY?.trim()),
+    model: modelName(),
+    reports
+  });
 }
 export async function POST(request) {
   const fail = (error, status = 400) => Response.json({ error }, { status });
@@ -66,11 +72,29 @@ export async function POST(request) {
           if (typeof delta === 'string') { content += delta; if (content.length > 60000) throw new Error('生成内容过长。'); send({ type: 'delta', text: delta }); }
         }
         if (!completed || !content.trim()) throw new Error('生成连接中断或返回空内容，请重试。');
-        send({ type: 'complete', createdAt: new Date().toISOString(), usage });
+        const createdAt = new Date().toISOString();
+        const saved = saveReport({
+          createdAt,
+          title: 'AI安全与合规定制日报',
+          content,
+          sources,
+          mode: reportMode,
+          model,
+          preferences: input.preferences || {}
+        });
+        send({ type: 'complete', id: saved?.id || Date.now(), createdAt, usage, sources, mode: reportMode, model });
       } catch { send({ type: 'error', error: controller.signal.aborted ? '生成超时或已取消，请重试。' : '日报未完整生成，请减少新闻数量后重试。' }); }
       finally { cleanup(); if (!cancelled) output.close(); }
     },
     cancel() { cancelled = true; abort(); cleanup(); }
   });
   return new Response(stream, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' } });
+}
+
+export async function DELETE(request) {
+  const u = new URL(request.url);
+  const id = u.searchParams.get('id');
+  if (!id) return Response.json({ error: '缺少报告 id' }, { status: 400 });
+  const success = deleteReport(id);
+  return Response.json({ success });
 }

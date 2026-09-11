@@ -31,6 +31,7 @@ test('真实路由处理：校验、密钥保护、选定素材、完成及中�
   const helperUrl = new URL('../lib/daily-report.mjs', import.meta.url).href;
   const source = (await readFile(new URL('../app/api/reports/route.js', import.meta.url), 'utf8'))
     .replace("import { getArticles } from '@/lib/repository';", 'const getArticles = async () => ({ data: globalThis.__dailyTestArticles, mode: "mock" });')
+    .replace("import { saveReport, listReports, deleteReport } from '@/lib/collection-store.mjs';", 'const saveReport = r => ({ id: 1, ...r }); const listReports = () => []; const deleteReport = () => true;')
     .replace("'@/lib/daily-report.mjs'", JSON.stringify(helperUrl));
   const { POST, GET } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
   const request = (input, headers = {}) => new Request('http://localhost/api/reports', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(input) });
