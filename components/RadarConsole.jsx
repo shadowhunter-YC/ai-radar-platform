@@ -36,7 +36,7 @@ const pageMeta = {
   },
   analysis: {
     eyebrow: "",
-    title: "情报清单",
+    title: "AI安全合规资讯库",
     description: ""
   },
   credibility: {
@@ -207,7 +207,7 @@ export default function RadarConsole({ initialArticleId, initialState, view = "o
     []
   );
   const allTypes = useMemo(
-    () => ["全部", "法规政策", "AI安全标准", "安全产品突破", "GitHub开源", "违规处罚与事件", "行业动态"],
+    () => ["全部", "法规政策", "AI安全标准", "安全产品突破", "GitHub开源", "违规处罚与事件"],
     []
   );
   const allMonths = useMemo(
@@ -535,6 +535,7 @@ export default function RadarConsole({ initialArticleId, initialState, view = "o
               setSelectedCredibility={setSelectedCredibility}
               setSelectedMonth={setSelectedMonth}
               setSelectedTag={setSelectedTag}
+              setSelectedType={setSelectedType}
               onUpdateCategory={handleUpdateCategory}
               initialArticleId={initialArticleId}
             />
@@ -2397,7 +2398,7 @@ function IntelDetail({ checkResult, onRunTrustCheck, selectedArticle, setSelecte
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-muted)' }}>
             <span>校正分类:</span>
             <select
-              value={selectedArticle.intelligenceType || '行业动态'}
+              value={selectedArticle.intelligenceType || '安全产品突破'}
               onChange={(e) => onUpdateCategory(selectedArticle.id, e.target.value)}
               style={{
                 padding: '4px 8px',
@@ -2409,9 +2410,10 @@ function IntelDetail({ checkResult, onRunTrustCheck, selectedArticle, setSelecte
               }}
             >
               <option value="法规政策">法规政策</option>
+              <option value="AI安全标准">AI安全标准</option>
               <option value="安全产品突破">安全产品突破</option>
+              <option value="GitHub开源">GitHub开源</option>
               <option value="违规处罚与事件">违规处罚与事件</option>
-              <option value="行业动态">行业动态</option>
             </select>
           </div>
         ) : null}
