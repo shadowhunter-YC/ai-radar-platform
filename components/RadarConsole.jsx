@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import MorningReport, { MorningCockpitSection, LatestMorningBrief } from "./MorningReport";
+import MorningReport from "./MorningReport";
 import ManualCollection from "./ManualCollection";
 import SourceManager from "./SourceManager";
 import LlmConfigModal from "./LlmConfigModal";
@@ -11,9 +11,9 @@ import { CANONICAL_TAGS, normalizeTags, matchesType, getCategoryMeta } from "@/l
 
 const navItems = [
   { key: "overview", label: "情报驾驶舱", href: "/", icon: "dashboard" },
+  { key: "morning", label: "每日AI早报", href: "/morning", icon: "morning" },
   { key: "topics", label: "AI情报时间线", href: "/topics", icon: "timeline" },
   { key: "analysis", label: "资讯库", href: "/analysis", icon: "library" },
-  { key: "morning", label: "每日AI早报", href: "/#morning-report", icon: "morning" },
   { key: "sources", label: "资讯源配置", href: "/sources", icon: "source" },
   { key: "credibility", label: "可信检查配置", href: "/credibility", icon: "shield" }
 ];
@@ -273,15 +273,6 @@ export default function RadarConsole({ initialArticleId, initialState, view = "o
     setSearchQuery("");
   }
 
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.location.hash === "#morning-report") {
-      const el = document.getElementById("morning-report");
-      if (el) {
-        setTimeout(() => el.scrollIntoView({ behavior: "smooth" }), 150);
-      }
-    }
-  }, []);
-
   return (
     <div className={`workspace-shell ${sidebarCollapsed ? "is-collapsed" : ""}`}>
       <aside className="app-sidebar" aria-label="平台导航">
@@ -324,16 +315,6 @@ export default function RadarConsole({ initialArticleId, initialState, view = "o
               href={item.href}
               key={item.key}
               title={sidebarCollapsed ? item.label : undefined}
-              onClick={(e) => {
-                if (item.key === "morning" && view === "overview") {
-                  e.preventDefault();
-                  const el = document.getElementById("morning-report");
-                  if (el) {
-                    el.scrollIntoView({ behavior: "smooth" });
-                    window.history.replaceState(null, "", "/#morning-report");
-                  }
-                }
-              }}
             >
               <span className="app-sidebar__icon" aria-hidden="true">
                 <NavIcon name={item.icon} />
@@ -562,6 +543,7 @@ export default function RadarConsole({ initialArticleId, initialState, view = "o
           {view === "morning" || view === "reports" ? (
             <MorningReport
               articles={articles}
+              sources={configuredSources || initialState?.sources || []}
               initialReports={initialState?.dailyReports}
               initialPreferences={initialState?.morningPreferences}
             />
@@ -1040,13 +1022,6 @@ function OverviewPage({
           />
         </div>
       </section>
-
-      {/* 每日AI早报：位于情报驾驶舱下方通栏展示 */}
-      <MorningCockpitSection
-        articles={allArticles || currentArticles}
-        initialReports={initialState?.dailyReports}
-        initialPreferences={initialState?.morningPreferences}
-      />
     </>
   );
 }

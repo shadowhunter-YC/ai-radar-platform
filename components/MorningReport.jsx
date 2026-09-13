@@ -200,7 +200,19 @@ function FormattedMorningReport({ content }) {
           );
         }
 
-        // 无动态说明特殊提示单行
+        // 列表要点（包括博主动态单独成行列表）
+        const isBullet = /^[-*•]\s+|^\d+\.\s+/.test(trimmed);
+        if (isBullet) {
+          const bulletText = trimmed.replace(/^[-*•]\s+|^\d+\.\s+/, '');
+          return (
+            <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', paddingLeft: 4, color: 'var(--color-text)' }}>
+              <span style={{ color: 'var(--color-brand-strong, #86bc25)', lineHeight: 1.8, fontSize: 12 }}>●</span>
+              <div style={{ flex: 1 }}>{parseRichInline(bulletText)}</div>
+            </div>
+          );
+        }
+
+        // 无动态说明特殊提示单行（仅在非列表且独立成行时展示为提示条）
         if (trimmed.includes('暂无公开新动态') || trimmed.includes('暂无新发布') || trimmed.includes('暂无新增')) {
           return (
             <div
@@ -224,18 +236,6 @@ function FormattedMorningReport({ content }) {
           );
         }
 
-        // 列表要点
-        const isBullet = /^[-*•]\s+|^\d+\.\s+/.test(trimmed);
-        if (isBullet) {
-          const bulletText = trimmed.replace(/^[-*•]\s+|^\d+\.\s+/, '');
-          return (
-            <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', paddingLeft: 4, color: 'var(--color-text)' }}>
-              <span style={{ color: 'var(--color-brand-strong, #86bc25)', lineHeight: 1.8, fontSize: 12 }}>●</span>
-              <div style={{ flex: 1 }}>{parseRichInline(bulletText)}</div>
-            </div>
-          );
-        }
-
         // 普通正文段落
         return (
           <p key={idx} style={{ margin: 0, color: 'var(--color-text-secondary)', lineHeight: 1.85 }}>
@@ -247,19 +247,15 @@ function FormattedMorningReport({ content }) {
   );
 }
 
-const PRESET_BLOGGERS = [
-  'Sam Altman', 'Yann LeCun', 'Andrej Karpathy', 'Demis Hassabis',
-  'Gary Marcus', 'Greg Brockman', 'Ilya Sutskever', 'Andrew Ng', 'Jim Fan'
-];
-
 const PRESET_LEGISLATION = [
   'EU AI Act', 'TC260', '生成式人工智能暂行办法', 'ISO 42001',
   'NIST AI RMF', '加州SB 1047', '网络安全法', '数据安全法', '算法备案'
 ];
 
-// 供情报驾驶舱（RadarView）下方通栏展示的每日AI早报面板
+// 每日AI早报独立工作台与面板
 export function MorningCockpitSection({
   articles = [],
+  sources = [],
   initialReports = [],
   initialPreferences = null
 }) {
@@ -272,6 +268,7 @@ export function MorningCockpitSection({
     ...(initialPreferences || {}),
     ...readStorage(STORAGE_PREFS, {})
   }));
+  const [allSources, setAllSources] = useState(sources || []);
   const [selectedReportId, setSelectedReportId] = useState(null);
   const [isConfigDrawerOpen, setIsConfigDrawerOpen] = useState(false);
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
@@ -283,7 +280,6 @@ export function MorningCockpitSection({
 
   // 抽屉内部编辑状态
   const [drawerPrefs, setDrawerPrefs] = useState(prefs);
-  const [newBloggerInput, setNewBloggerInput] = useState('');
   const [newLegislationInput, setNewLegislationInput] = useState('');
   const [drawerNotice, setDrawerNotice] = useState('');
 
@@ -320,6 +316,15 @@ export function MorningCockpitSection({
       })
       .catch(() => {});
 
+    fetch('/api/sources')
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data.sources)) {
+          setAllSources(data.sources);
+        }
+      })
+      .catch(() => {});
+
     window.addEventListener('storage', sync);
     window.addEventListener('morning-reports-change', sync);
     return () => {
@@ -329,12 +334,87 @@ export function MorningCockpitSection({
     };
   }, []);
 
+  // 提取当前已订阅的博主列表
+  const subscribedBloggers = useMemo(() => {
+    const list = [];
+    const seen = new Set();
+    const sourcePool = [...(allSources || []), ...(sources || [])];
+
+    for (const s of sourcePool) {
+      if (!s) continue;
+      const name = (s.name || '').trim();
+      const url = (s.url || '').trim();
+      const desc = (s.description || s.notes || '').trim();
+      const type = (s.type || s.sourceType || '').trim();
+
+      const isBlogger =
+        url.includes('/twitter/user/') ||
+        url.includes('/x/user/') ||
+        url.includes('twstalker.com') ||
+        url.includes('twitter.com') ||
+        url.includes('x.com') ||
+        type === 'X博主' ||
+        type === '博主/社交媒体' ||
+        desc.includes('博主') ||
+        desc.includes('推文') ||
+        desc.includes('个人 X') ||
+        desc.includes('个人X') ||
+        name.startsWith('@') ||
+        name.includes('(@');
+
+      if (isBlogger && name && !seen.has(name)) {
+        seen.add(name);
+        const handleMatch = name.match(/@([\w_]+)/) || url.match(/twitter\/user\/([\w_]+)/);
+        list.push({
+          id: s.id,
+          name,
+          handle: handleMatch ? handleMatch[1] : '',
+          url,
+          description: desc
+        });
+      }
+    }
+    return list;
+  }, [allSources, sources]);
+
+  const isBloggerSelected = (bName) => {
+    const list = drawerPrefs.trackedBloggers || [];
+    const cleanB = bName.replace(/\s*\(@[\w_]+\)/, '').trim().toLowerCase();
+    return list.some(tb => {
+      if (tb === bName) return true;
+      const cleanTb = tb.replace(/\s*\(@[\w_]+\)/, '').trim().toLowerCase();
+      return cleanTb === cleanB || bName.toLowerCase().includes(cleanTb) || tb.toLowerCase().includes(cleanB);
+    });
+  };
+
+  const toggleBloggerSelection = (bName) => {
+    setDrawerPrefs(p => {
+      const current = p.trackedBloggers || [];
+      const isSelected = isBloggerSelected(bName);
+      if (isSelected) {
+        const cleanB = bName.replace(/\s*\(@[\w_]+\)/, '').trim().toLowerCase();
+        return {
+          ...p,
+          trackedBloggers: current.filter(tb => {
+            if (tb === bName) return false;
+            const cleanTb = tb.replace(/\s*\(@[\w_]+\)/, '').trim().toLowerCase();
+            return cleanTb !== cleanB && !bName.toLowerCase().includes(cleanTb) && !tb.toLowerCase().includes(cleanB);
+          })
+        };
+      } else {
+        return {
+          ...p,
+          trackedBloggers: [...current, bName]
+        };
+      }
+    });
+  };
+
   // 当打开偏好配置抽屉时，将当前 prefs 拷贝入 drawerPrefs
   useEffect(() => {
     if (isConfigDrawerOpen) {
       setDrawerPrefs(prefs);
       setDrawerNotice('');
-      setNewBloggerInput('');
       setNewLegislationInput('');
     }
   }, [isConfigDrawerOpen, prefs]);
@@ -666,10 +746,7 @@ export function MorningCockpitSection({
                       >
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                           <div style={{ fontWeight: isCurrent ? 700 : 500 }}>
-                            {rDate} {isToday ? '(今日)' : ''}
-                          </div>
-                          <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
-                            {r.sources?.length || 0} 篇情报 · {r.model || '大模型'}
+                            {rDate} {isToday ? '(今日早报)' : '历史早报'}
                           </div>
                         </div>
                         {isCurrent && <span style={{ fontSize: 12, fontWeight: 700 }}>✓</span>}
@@ -757,40 +834,6 @@ export function MorningCockpitSection({
         </div>
       ) : activeReport ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* 早报元数据快照 */}
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '10px 14px',
-              backgroundColor: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              borderRadius: 6,
-              flexWrap: 'wrap',
-              gap: 8
-            }}
-          >
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span className="badge badge--neutral">{dateLabel(activeReport.createdAt)}</span>
-              <span className="badge badge--neutral">{activeReport.sources?.length || 0} 篇情报</span>
-              <span className="badge badge--info">{activeReport.model || '大模型生成'}</span>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
-              {activeReport.preferences?.trackedBloggers?.length > 0 && (
-                <span style={{ color: '#4338ca', fontSize: 12 }}>
-                  监测博主: {activeReport.preferences.trackedBloggers.slice(0, 3).join('、')}
-                </span>
-              )}
-              {activeReport.preferences?.trackedLegislation?.length > 0 && (
-                <span style={{ color: '#7e22ce', fontSize: 12 }}>
-                  重点法规: {activeReport.preferences.trackedLegislation.slice(0, 2).join('、')}
-                </span>
-              )}
-            </div>
-          </div>
-
           {/* 结构化早报正文 */}
           <FormattedMorningReport content={activeReport.content} />
         </div>
@@ -906,120 +949,73 @@ export function MorningCockpitSection({
                 </div>
               )}
 
-              {/* 1. 重点关注博主/意见领袖 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {/* 1. 重点关注博主 (仅显示已订阅博主，支持勾选) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                   <strong style={{ fontSize: 13, color: 'var(--color-text)' }}>
-                    重点关注博主 / 专家学者 (Tracked Bloggers)
+                    重点关注博主 (已订阅博主列表)
                   </strong>
                   <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)' }}>
-                    已选 {drawerPrefs.trackedBloggers?.length || 0} 位
+                    已勾选 {drawerPrefs.trackedBloggers?.length || 0} 位
                   </span>
                 </div>
                 <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                  大模型将优先提取正文、作者或标题提及上述专家的前沿研判与言论。
+                  早报将专属列出勾选博主的最新动态；即使今日新增资讯为 0，也会明确显示为 0 条。仅支持勾选已订阅的博主。
                 </p>
 
-                {/* 已选博主标签 */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, minHeight: 32, padding: 8, background: '#f8fafc', border: '1px solid var(--color-border)', borderRadius: 4 }}>
-                  {(drawerPrefs.trackedBloggers || []).length === 0 ? (
-                    <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>未添加关注博主</span>
-                  ) : (
-                    drawerPrefs.trackedBloggers.map(b => (
-                      <span
-                        key={b}
-                        className="badge"
-                        style={{
-                          background: 'rgba(99,102,241,0.12)',
-                          color: '#4338ca',
-                          border: '1px solid rgba(99,102,241,0.25)',
-                          fontSize: 12,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          padding: '3px 8px'
-                        }}
-                      >
-                        {b}
-                        <button
-                          type="button"
-                          onClick={() => setDrawerPrefs(p => ({ ...p, trackedBloggers: (p.trackedBloggers || []).filter(x => x !== b) }))}
-                          style={{ border: 'none', background: 'transparent', color: '#6366f1', cursor: 'pointer', padding: 0, fontWeight: 700, fontSize: 13, lineHeight: 1 }}
-                          title="移除"
+                {/* 订阅博主列表（多选框） */}
+                {subscribedBloggers.length === 0 ? (
+                  <div style={{ padding: '14px', background: 'var(--color-surface)', border: '1px dashed var(--color-border)', borderRadius: 6, fontSize: 12.5, color: 'var(--color-text-muted)', textAlign: 'center' }}>
+                    暂无已订阅的 Twitter/X 博主。请前往「资讯源配置」添加博主订阅后再来勾选。
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto', paddingRight: 4 }}>
+                    {subscribedBloggers.map(b => {
+                      const checked = isBloggerSelected(b.name);
+                      return (
+                        <label
+                          key={b.id || b.name}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            padding: '8px 12px',
+                            background: checked ? 'rgba(134,188,37,0.08)' : 'var(--color-surface)',
+                            border: `1px solid ${checked ? 'var(--color-brand-strong)' : 'var(--color-border)'}`,
+                            borderRadius: 6,
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            transition: 'all 0.15s ease'
+                          }}
                         >
-                          ×
-                        </button>
-                      </span>
-                    ))
-                  )}
-                </div>
-
-                {/* 输入框添加 */}
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    className="input"
-                    type="text"
-                    placeholder="输入博主/领袖姓名（如 Andrej Karpathy）"
-                    value={newBloggerInput}
-                    onChange={(e) => setNewBloggerInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        const val = newBloggerInput.trim();
-                        if (val && !drawerPrefs.trackedBloggers?.includes(val)) {
-                          setDrawerPrefs(p => ({ ...p, trackedBloggers: [...(p.trackedBloggers || []), val] }));
-                          setNewBloggerInput('');
-                        }
-                      }
-                    }}
-                    style={{ flex: 1, fontSize: 12.5 }}
-                  />
-                  <button
-                    type="button"
-                    className="button button--secondary"
-                    onClick={() => {
-                      const val = newBloggerInput.trim();
-                      if (val && !drawerPrefs.trackedBloggers?.includes(val)) {
-                        setDrawerPrefs(p => ({ ...p, trackedBloggers: [...(p.trackedBloggers || []), val] }));
-                        setNewBloggerInput('');
-                      }
-                    }}
-                    style={{ fontSize: 12 }}
-                  >
-                    添加
-                  </button>
-                </div>
-
-                {/* 推荐预置博主快捷点击 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
-                  <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>快速添加:</span>
-                  {PRESET_BLOGGERS.map(name => {
-                    const exists = drawerPrefs.trackedBloggers?.includes(name);
-                    return (
-                      <button
-                        key={name}
-                        type="button"
-                        onClick={() => {
-                          if (!exists) {
-                            setDrawerPrefs(p => ({ ...p, trackedBloggers: [...(p.trackedBloggers || []), name] }));
-                          }
-                        }}
-                        style={{
-                          fontSize: 11,
-                          padding: '2px 6px',
-                          border: '1px dashed var(--color-border)',
-                          borderRadius: 3,
-                          background: exists ? '#e2e8f0' : '#ffffff',
-                          color: exists ? '#94a3b8' : 'var(--color-text)',
-                          cursor: exists ? 'default' : 'pointer'
-                        }}
-                        disabled={exists}
-                      >
-                        {exists ? `✓ ${name}` : `+ ${name}`}
-                      </button>
-                    );
-                  })}
-                </div>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleBloggerSelection(b.name)}
+                            style={{ accentColor: 'var(--color-brand-strong)', width: 16, height: 16, cursor: 'pointer', margin: 0 }}
+                          />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                              <span style={{ fontSize: 13, fontWeight: checked ? 700 : 500, color: 'var(--color-text)' }}>
+                                {b.name}
+                              </span>
+                              {b.handle && (
+                                <span style={{ fontSize: 11.5, color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                                  @{b.handle}
+                                </span>
+                              )}
+                            </div>
+                            {b.description && (
+                              <span style={{ fontSize: 11.5, color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {b.description}
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* 2. 重点追踪立法/规范与法案 */}

@@ -88,7 +88,36 @@ export async function POST(request) {
   };
   const providerName = providerNames[llm.provider] || '大模型服务';
 
-  const bloggersPrompt = trackedBloggers.length > 0 ? trackedBloggers.join('、') : '未指定';
+  const bloggerDynamicStats = trackedBloggers.map(blogger => {
+    const bLower = String(blogger).toLowerCase();
+    const cleanB = blogger.replace(/\s*\(@[\w_]+\)/, '').trim().toLowerCase();
+    const handleMatch = blogger.match(/@([\w_]+)/);
+    const handle = handleMatch ? handleMatch[1].toLowerCase() : null;
+
+    const matchedArticles = materials.filter(m => {
+      if (m.matchedBlogger === blogger) return true;
+      const text = [
+        m.title,
+        m.summary,
+        m.source,
+        m.affectedEntity
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      return text.includes(bLower) || (cleanB && text.includes(cleanB)) || (handle && text.includes(handle));
+    });
+
+    return {
+      blogger,
+      count: matchedArticles.length,
+      sampleQuotes: matchedArticles.map(m => `[${m.number}] ${m.title}`).slice(0, 3)
+    };
+  });
+
+  const bloggerFactsText = trackedBloggers.length > 0
+    ? bloggerDynamicStats.map(s =>
+        `- **${s.blogger}**: 今日新增资讯 ${s.count} 条${s.count > 0 ? ` (涉及素材: ${s.sampleQuotes.join('、')})` : ' (今日素材库中暂无新增公开动态与言论)'}`
+      ).join('\n')
+    : '未指定';
   const legislationPrompt = trackedLegislation.length > 0 ? trackedLegislation.join('、') : '未指定';
 
   let upstream;
@@ -110,8 +139,16 @@ export async function POST(request) {
               '## 一、晨报核心速览 (Executive Summary)\n' +
               '（以 3 条提纲挈领的要点，提炼过去 24 小时最重要的合规、产品与风险变化要点）\n\n' +
               `## 二、重点博主与领袖动态 (Key Influencer & Expert Signals)\n` +
-              `【用户重点关注博主/领袖】：${bloggersPrompt}\n` +
-              '（检查素材中是否有上述博主/专家的发声、公开演讲、评测或最新立场。如有，提炼其核心论点并标注[引用编号]；若本次素材中暂无所关注博主的新发声，必须明确单列说明：“今日所关注博主暂无公开新动态”，严禁编造谎言）\n\n' +
+              (trackedBloggers.length > 0
+                ? `【用户指定重点关注博主及系统核验事实（必须严格据此逐一列出）】：\n${bloggerFactsText}\n\n` +
+                  '【写作硬性规则】：\n' +
+                  '1. 必须对上述关注的每一位博主【逐一单独列点成行】，严禁遗漏任何一位关注的博主！\n' +
+                  '2. 格式统一为：“- **博主名**: 今日新增资讯 X 条。……”；\n' +
+                  '3. 如果某位博主今日新增资讯是 0，也【必须明确显示为 0 条】（格式必须如：“- **博主名**: 今日新增资讯 0 条。暂无公开新动态与言论”），绝不能省略该博主；\n' +
+                  '4. 如果某位博主今日新增资讯大于 0，提炼其核心论点、技术洞察或研判并标注[引用编号]；\n' +
+                  '5. 严禁编造任何虚假言论。\n\n'
+                : '（检查素材中是否有行业关键专家或意见领袖的前沿观点，如有请提炼并标注[引用编号]；若无则简要陈述行业声音态势）\n\n'
+              ) +
               `## 三、重点法案与监管追踪 (Target Legislation & Compliance Watch)\n` +
               `【用户重点关注法规/标准】：${legislationPrompt}\n` +
               '（梳理上述法规、官方指南、备案或监管执法动向。如有，提炼合规红线与业务影响并标注[引用编号]；若本次素材中暂无该法案变动，必须明确单列说明：“今日所关注法案暂无新发布”）\n\n' +
