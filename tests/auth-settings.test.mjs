@@ -141,6 +141,82 @@ test('/api/auth 与 /api/settings/llm 端到端鉴权流程', async () => {
   assert.equal(savedData.success, true);
   assert.equal(savedData.config.model, 'deepseek-reasoner');
 
+  // 7.5. 测试修改密码流程 (change_password)
+  // 7.5.1 未登录时修改密码应返回 401
+  const unauthChangeRes = await authPost(new Request('http://localhost/api/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'change_password',
+      oldPassword: 'admin123456',
+      newPassword: 'newAdminPassword666'
+    })
+  }));
+  assert.equal(unauthChangeRes.status, 401);
+
+  // 7.5.2 登录状态下旧密码错误
+  const wrongOldPassRes = await authPost(new Request('http://localhost/api/auth', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Cookie: `radar_session=${sessionToken}`
+    },
+    body: JSON.stringify({
+      action: 'change_password',
+      oldPassword: 'wrongOldPassword',
+      newPassword: 'newAdminPassword666'
+    })
+  }));
+  assert.equal(wrongOldPassRes.status, 400);
+
+  // 7.5.3 登录状态下成功修改为新密码
+  const successChangeRes = await authPost(new Request('http://localhost/api/auth', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Cookie: `radar_session=${sessionToken}`
+    },
+    body: JSON.stringify({
+      action: 'change_password',
+      oldPassword: 'admin123456',
+      newPassword: 'newAdminPassword666'
+    })
+  }));
+  assert.equal(successChangeRes.status, 200);
+  const successChangeData = await successChangeRes.json();
+  assert.equal(successChangeData.success, true);
+
+  // 7.5.4 用旧密码登录应失败
+  const oldLoginFail = await authPost(new Request('http://localhost/api/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'login', username: 'admin', password: 'admin123456' })
+  }));
+  assert.equal(oldLoginFail.status, 401);
+
+  // 7.5.5 用新密码登录应成功
+  const newLoginSuccess = await authPost(new Request('http://localhost/api/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'login', username: 'admin', password: 'newAdminPassword666' })
+  }));
+  assert.equal(newLoginSuccess.status, 200);
+
+  // 7.5.6 恢复默认密码为 admin123456，避免污染后续测试与环境
+  const resetPassRes = await authPost(new Request('http://localhost/api/auth', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Cookie: `radar_session=${sessionToken}`
+    },
+    body: JSON.stringify({
+      action: 'change_password',
+      oldPassword: 'newAdminPassword666',
+      newPassword: 'admin123456'
+    })
+  }));
+  assert.equal(resetPassRes.status, 200);
+
   // 8. 退出登录
   const logoutRes = await authPost(new Request('http://localhost/api/auth', {
     method: 'POST',

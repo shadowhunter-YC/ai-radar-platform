@@ -9,7 +9,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const from = searchParams.get("from") || "/";
 
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -137,6 +137,7 @@ function LoginForm() {
             type="text"
             required
             autoComplete="username"
+            placeholder="请输入管理员账号"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             style={{
@@ -225,7 +226,7 @@ function LoginForm() {
           color: "var(--color-text-muted, #6b7280)"
         }}
       >
-        <span>默认初始凭证: admin / admin123456</span>
+        <span>安全合规认证 · 内部受控访问</span>
         <Link
           href="/"
           style={{

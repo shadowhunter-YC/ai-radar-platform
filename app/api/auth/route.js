@@ -16,52 +16,56 @@ function getSessionToken(request) {
   return match ? match[1] : null;
 }
 
-export async function GET(request) {
+async function getSessionUser(request) {
   const token = getSessionToken(request);
-  if (!token) {
-    return Response.json({ loggedIn: false });
-  }
+  if (!token) return null;
 
   // 1. 优先校验 HMAC 签名 Session
   const session = await verifySession(token);
   if (session && session.exp > Date.now()) {
     if (session.tokenId) {
       const dbSession = verifySessionToken(session.tokenId);
-      if (!dbSession) {
-        return Response.json({ loggedIn: false }, {
-          headers: {
-            'Set-Cookie': 'radar_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'
-          }
-        });
-      }
+      if (!dbSession) return null;
     }
-    return Response.json({
-      loggedIn: true,
-      user: {
-        id: session.uid,
-        username: session.username,
-        role: session.role
-      }
-    });
+    return {
+      id: session.uid,
+      username: session.username,
+      role: session.role
+    };
   }
 
   // 2. 兼容 SQLite 旧 Token 校验
   const user = verifySessionToken(token);
+  if (user) {
+    return {
+      id: user.id,
+      username: user.username,
+      role: user.role
+    };
+  }
+
+  return null;
+}
+
+export async function GET(request) {
+  const user = await getSessionUser(request);
   if (!user) {
-    return Response.json({ loggedIn: false }, {
-      headers: {
-        'Set-Cookie': 'radar_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'
-      }
-    });
+    const token = getSessionToken(request);
+    return Response.json(
+      { loggedIn: false },
+      token
+        ? {
+            headers: {
+              'Set-Cookie': 'radar_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'
+            }
+          }
+        : undefined
+    );
   }
 
   return Response.json({
     loggedIn: true,
-    user: {
-      id: user.id,
-      username: user.username,
-      role: user.role
-    }
+    user
   });
 }
 
@@ -137,10 +141,13 @@ export async function POST(request) {
   }
 
   if (action === 'change_password') {
-    const token = getSessionToken(request);
-    const user = verifySessionToken(token);
+    const user = await getSessionUser(request);
     if (!user) {
       return Response.json({ error: '请先登录' }, { status: 401 });
+    }
+
+    if (!oldPassword || !newPassword) {
+      return Response.json({ error: '原密码和新密码不能为空' }, { status: 400 });
     }
 
     try {
