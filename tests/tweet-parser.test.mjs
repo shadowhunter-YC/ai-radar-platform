@@ -63,16 +63,13 @@ test('parseTweetDraftPayload 对完整实质性推文保留原义并清理前缀
 });
 
 test('confirmDraft 深度集成：优先采纳 AI 总结的专业标题，杜绝极简词落库', async () => {
-  const testDir = path.join(process.cwd(), 'data', `test-tweet-${randomUUID()}`);
-  process.env.COLLECTION_DATA_DIR = testDir;
   const { store, addDraft, setAnalysis, confirmDraft, importedArticles } = await import('../lib/collection-store.mjs');
-
   store();
 
   // 场景 1: 草稿原标题为 "yes"，AI 研判输出了深度总结标题
   const draft1 = addDraft({
     title: 'yes',
-    url: 'https://x.com/elonmusk/status/999111',
+    url: `https://x.com/elonmusk/status/${randomUUID()}`,
     text: '推文全文：yes Re @GaryMarcus: AI安全评测标准',
     source: 'X (@elonmusk)',
     kind: 'rss-feed',
@@ -102,7 +99,7 @@ test('confirmDraft 深度集成：优先采纳 AI 总结的专业标题，杜绝
   // 场景 2: 原标题为 "yes"，但 AI 分析未提供 title，根据 summary 自动安全提炼
   const draft2 = addDraft({
     title: 'yes',
-    url: 'https://x.com/sama/status/999222',
+    url: `https://x.com/sama/status/${randomUUID()}`,
     text: 'yes',
     source: 'X (@sama)',
     kind: 'rss-feed',

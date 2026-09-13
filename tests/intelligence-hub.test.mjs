@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rmSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { normalizeCategory, matchesType, getCategoryMeta } from '../lib/tag-taxonomy.mjs';
+import { normalizeCategory, matchesType, getCategoryMeta, normalizeTags } from '../lib/tag-taxonomy.mjs';
 
 test('Taxonomy: normalizeCategory maps legacy and standard types accurately', () => {
   assert.equal(normalizeCategory('合规动态'), '法规政策');
@@ -159,4 +159,33 @@ test('CollectionStore: seedRssFeeds & confirmDraft with detailTag, affectedEntit
   assert.equal(afterUpdate.intelligenceType, '法规政策');
 
   rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test('Taxonomy: 五大标准分类精细化规则（绣花打磨）严密判定', () => {
+  // 1. 法规政策硬隔离判定
+  assert.equal(normalizeCategory('未归类', '国家网信办发布境内深度合成服务算法备案清单', 'cac.gov.cn'), '法规政策');
+  assert.equal(normalizeCategory('合规动态', 'EU AI Act enters into force across EU member states', 'europa.eu'), '法规政策');
+  assert.equal(normalizeCategory('其他', '关于生成式人工智能服务管理暂行办法的监管指南', 'gov.cn'), '法规政策');
+
+  // 2. AI安全标准与白皮书判定（防止误入法规或事件）
+  assert.equal(normalizeCategory('法规政策', 'TC260-003 生成式人工智能服务安全基本要求实践指南', 'tc260.org.cn'), 'AI安全标准');
+  assert.equal(normalizeCategory('安全事件', 'NIST Releases AI Risk Management Framework Generative AI Profile', 'nist.gov'), 'AI安全标准');
+  assert.equal(normalizeCategory('其他', 'OWASP Top 10 for Large Language Model Applications 2026', 'owasp.org'), 'AI安全标准');
+  assert.equal(normalizeCategory('未归类', 'ISO/IEC 42001:2023 人工智能管理体系实施白皮书', 'iso.org'), 'AI安全标准');
+
+  // 3. GitHub 开源生态判定
+  assert.equal(normalizeCategory('产品动态', 'leondz/garak automated LLM vulnerability scanner release on GitHub', 'github.com'), 'GitHub开源');
+  assert.equal(normalizeCategory('未归类', '微软开源自动化AI红队评测编排工具 PyRIT', 'github.com/Azure/PyRIT'), 'GitHub开源');
+
+  // 4. 真实违规处罚与攻击事件判定（排除防御工具）
+  assert.equal(normalizeCategory('其他', 'FTC 对某AI公司违规窃取训练数据开出 500 万美元罚单', 'ftc.gov'), '违规处罚与事件');
+  assert.equal(normalizeCategory('安全产品突破', '某知名大模型遭遇间接提示注入攻击导致数万用户数据泄露', 'securityweek.com'), '违规处罚与事件');
+
+  // 5. 安全产品突破（专有防御模型、护栏与行业通用演进归并）
+  assert.equal(normalizeCategory('其他', 'Meta 推出 Llama Guard 3 运行时提示词安全防护模型', 'meta.com'), '安全产品突破');
+  assert.equal(normalizeCategory('行业动态', 'OpenAI 发布 GPT-6 基础大模型与新版推理引擎', 'openai.com'), '安全产品突破');
+
+  // 6. 标签映射别名打磨测试
+  const tags = normalizeTags(['安全护栏', '越狱防护', '算法备案', 'TC260', '数据脱敏', '水印溯源']);
+  assert.deepEqual(tags.sort(), ['AI安全', 'AI合规治理', '内容与身份风险', '安全标准与规范', '数据与隐私'].sort());
 });
