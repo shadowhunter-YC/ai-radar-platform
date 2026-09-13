@@ -23,6 +23,38 @@ test('SSE解析兼容分字节中文、CRLF及无末尾换行', async () => {
   assert.deepEqual(events, ['{"text":"日报"}', '[DONE]']);
   assert.equal(safeSourceUrl('javascript:alert(1)'), null);
 });
+test('每日AI早报偏好：博主匹配、重点法案匹配与智能加权排序', async () => {
+  const { DEFAULT_MORNING_PREFERENCES, matchBlogger, matchLegislation, filterReportArticles } = await import('../lib/daily-report.mjs');
+  assert.ok(Array.isArray(DEFAULT_MORNING_PREFERENCES.trackedBloggers));
+  assert.ok(DEFAULT_MORNING_PREFERENCES.trackedBloggers.includes('Sam Altman'));
+  assert.ok(DEFAULT_MORNING_PREFERENCES.trackedLegislation.includes('EU AI Act'));
+
+  const sampleArticles = [
+    { id: 101, title: '常规AI模型发布', publishedAt: '2026-09-10T12:00:00Z', intelligenceType: '行业动态', tags: ['模型'], summary: '普通资讯' },
+    { id: 102, title: 'Sam Altman 谈最新超级对齐防线', publishedAt: '2026-09-10T08:00:00Z', intelligenceType: '行业动态', tags: ['安全'], summary: '关于大模型越狱防御的论述' },
+    { id: 103, title: '欧盟最新落实 EU AI Act 高风险分类细则', publishedAt: '2026-09-10T06:00:00Z', intelligenceType: '法规政策', tags: ['合规'], summary: '针对高风险系统的强制核查' }
+  ];
+
+  // 匹配测试
+  assert.equal(matchBlogger(sampleArticles[1], ['Sam Altman', 'Yann LeCun']), 'Sam Altman');
+  assert.equal(matchBlogger(sampleArticles[0], ['Sam Altman']), null);
+  assert.equal(matchLegislation(sampleArticles[2], ['EU AI Act', 'NIST']), 'EU AI Act');
+  assert.equal(matchLegislation(sampleArticles[0], ['EU AI Act']), null);
+
+  // 偏好筛选与加权排序测试：命中博主/法案的资讯优先排在前面，即便时间较早
+  const filtered = filterReportArticles(sampleArticles, {
+    period: 'all',
+    trackedBloggers: ['Sam Altman'],
+    trackedLegislation: ['EU AI Act']
+  });
+
+  // 102 (命中博主) 和 103 (命中法案) 得分加权高于未命中的 101
+  assert.equal(filtered[0].id, 102);
+  assert.equal(filtered[1].id, 103);
+  assert.equal(filtered[2].id, 101);
+  assert.equal(filtered[0]._matchedBlogger, 'Sam Altman');
+  assert.equal(filtered[1]._matchedLegislation, 'EU AI Act');
+});
 test('真实路由处理：校验、密钥保护、选定素材、完成及中断', async () => {
   const originalFetch = globalThis.fetch;
   const originalKey = process.env.SILICONFLOW_API_KEY;
@@ -31,7 +63,7 @@ test('真实路由处理：校验、密钥保护、选定素材、完成及中�
   const helperUrl = new URL('../lib/daily-report.mjs', import.meta.url).href;
   const source = (await readFile(new URL('../app/api/reports/route.js', import.meta.url), 'utf8'))
     .replace("import { getArticles } from '@/lib/repository';", 'const getArticles = async () => ({ data: globalThis.__dailyTestArticles, mode: "mock" });')
-    .replace("import { saveReport, listReports, deleteReport } from '@/lib/collection-store.mjs';", 'const saveReport = r => ({ id: 1, ...r }); const listReports = () => []; const deleteReport = () => true;')
+    .replace(/import\s*\{[^}]*\}\s*from\s*['"]@\/lib\/collection-store\.mjs['"];?/, 'const saveReport = r => ({ id: 1, ...r }); const listReports = () => []; const deleteReport = () => true; const getLlmConfig = () => ({ provider: "siliconflow", baseUrl: (process.env.SILICONFLOW_BASE_URL || "https://api.siliconflow.cn/v1").replace(/\\/+$/, ""), apiKey: process.env.SILICONFLOW_API_KEY?.trim() || "", model: process.env.SILICONFLOW_MODEL || "deepseek-ai/DeepSeek-V4-Pro", configured: Boolean(process.env.SILICONFLOW_API_KEY?.trim()) });')
     .replace("'@/lib/daily-report.mjs'", JSON.stringify(helperUrl));
   const { POST, GET } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
   const request = (input, headers = {}) => new Request('http://localhost/api/reports', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(input) });
