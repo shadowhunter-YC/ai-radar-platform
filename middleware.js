@@ -35,8 +35,8 @@ export async function middleware(request) {
     return NextResponse.next();
   }
 
-  // 4. 开放认证接口与公开 RSS 订阅路由
-  if (pathname === '/api/auth' || pathname.startsWith('/api/rss/')) {
+  // 4. 开放认证接口
+  if (pathname === '/api/auth') {
     return NextResponse.next();
   }
 
