@@ -547,6 +547,7 @@ export default function RadarConsole({ initialArticleId, initialState, view = "o
               sources={configuredSources || initialState?.sources || []}
               initialReports={initialState?.dailyReports}
               initialPreferences={initialState?.morningPreferences}
+              mode={initialState?.mode || 'auto'}
             />
           ) : null}
         </main>

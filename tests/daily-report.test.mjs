@@ -85,6 +85,7 @@ test('真实路由处理：校验、密钥保护、选定素材、完成及中�
     assert.equal((await POST(request({ ...input, articleIds: [999] }))).status, 409);
     let sent;
     globalThis.fetch = async (url, options) => { sent = JSON.parse(options.body); return new Response('data: {"choices":[{"delta":{"content":"今日概览：新闻甲[1]"}}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'); };
+    assert.equal((await POST(request({ ...input, mode: 'auto' }))).status, 200);
     const success = await events(await POST(request(input)));
     assert.equal(success.at(-1).type, 'complete');
     assert.equal(success[0].sources.length, 1);

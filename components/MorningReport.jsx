@@ -257,7 +257,8 @@ export function MorningCockpitSection({
   articles = [],
   sources = [],
   initialReports = [],
-  initialPreferences = null
+  initialPreferences = null,
+  mode = 'auto'
 }) {
   const [savedReports, setSavedReports] = useState(() => {
     if (Array.isArray(initialReports) && initialReports.length) return initialReports;
@@ -507,7 +508,7 @@ export function MorningCockpitSection({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           articleIds: matches.map(a => a.id),
-          mode: 'auto',
+          mode: mode || 'auto',
           preferences: targetPrefs
         }),
         signal: controller.current.signal

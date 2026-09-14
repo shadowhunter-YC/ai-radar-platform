@@ -38,12 +38,14 @@ export async function POST(request) {
     return Response.json({ success: true, preferences: input.preferences });
   }
 
-  if (!input || !Array.isArray(input.articleIds) || !input.articleIds.length || input.articleIds.length > 30 || input.articleIds.some(id => !Number.isInteger(id) || id <= 0)) return fail('请选择 1–30 条新闻。');
+  const rawIds = Array.isArray(input?.articleIds) ? input.articleIds : [];
+  const articleIds = rawIds.map(id => typeof id === 'number' ? id : parseInt(id, 10)).filter(id => Number.isInteger(id) && id > 0);
+  if (!articleIds.length || articleIds.length > 30) return fail('请选择 1–30 条新闻。');
   const llm = getLlmConfig();
   if (!llm.configured) return fail('尚未配置大模型 API Key，请登录系统后在大模型配置中设置。', 503);
   const { data, mode } = await getArticles();
-  if (input.mode !== mode) return fail('新闻数据来源已变化，请刷新后重新选择。', 409);
-  const articles = [...new Set(input.articleIds)].map(id => data.find(a => a.id === id));
+  if (input.mode && input.mode !== 'auto' && input.mode !== mode) return fail('新闻数据来源已变化，请刷新后重新选择。', 409);
+  const articles = [...new Set(articleIds)].map(id => data.find(a => String(a.id) === String(id)));
   if (articles.some(a => !a)) return fail('部分新闻已不可用，请刷新并重新选择。', 409);
   const reportMode = selectedReportMode(articles, mode);
   const model = llm.model, controller = new AbortController();
