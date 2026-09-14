@@ -124,3 +124,39 @@ test('confirmDraft 深度集成：优先采纳 AI 总结的专业标题，杜绝
   assert.notEqual(saved2.title, 'yes');
   assert.ok(saved2.title.includes('山姆·奥特曼'));
 });
+
+test('isTweetSource 识别 X 关键词搜索流与热点议题信源', () => {
+  assert.equal(isTweetSource('https://rss.wilsongo.top/twitter/keyword/(%22AI%20safety%22)%20min_faves%3A50'), true);
+  assert.equal(isTweetSource('https://rss.wilsongo.top/twitter/search/AI%20regulation'), true);
+  assert.equal(isTweetSource('https://example.com/stream', 'X热点: AI安全'), true);
+  assert.equal(isTweetSource('https://example.com/stream', 'X/Twitter 热点搜索流'), true);
+});
+
+test('OFFICIAL_PRESET_FEEDS 包含 X 平台热点议题预置源', async () => {
+  const { OFFICIAL_PRESET_FEEDS } = await import('../lib/collection-store.mjs');
+  const safetyPreset = OFFICIAL_PRESET_FEEDS.find(f => f.id === 'preset-x-hot-safety');
+  const slowdownPreset = OFFICIAL_PRESET_FEEDS.find(f => f.id === 'preset-x-hot-slowdown');
+
+  assert.ok(safetyPreset, '必须包含 preset-x-hot-safety 预置源');
+  assert.ok(safetyPreset.url.includes('/twitter/keyword/'));
+  assert.ok(safetyPreset.url.includes('min_faves'));
+
+  assert.ok(slowdownPreset, '必须包含 preset-x-hot-slowdown 预置源');
+  assert.ok(slowdownPreset.url.includes('/twitter/keyword/'));
+  assert.ok(slowdownPreset.description.includes('Dario'));
+});
+
+test('CURATED_TWITTER_RECOMMENDATIONS 精选热点议题与领袖推荐完整', async () => {
+  const { CURATED_TWITTER_RECOMMENDATIONS } = await import('../lib/tweet-parser.mjs');
+  assert.ok(Array.isArray(CURATED_TWITTER_RECOMMENDATIONS.topics));
+  assert.ok(CURATED_TWITTER_RECOMMENDATIONS.topics.length >= 5);
+  assert.ok(CURATED_TWITTER_RECOMMENDATIONS.topics.some(t => t.name.includes('AI安全') || t.query.includes('AI safety')));
+  assert.ok(CURATED_TWITTER_RECOMMENDATIONS.topics.some(t => t.name.includes('减速') || t.query.includes('Dario')));
+
+  assert.ok(Array.isArray(CURATED_TWITTER_RECOMMENDATIONS.leaders));
+  assert.ok(CURATED_TWITTER_RECOMMENDATIONS.leaders.length >= 7);
+  assert.ok(CURATED_TWITTER_RECOMMENDATIONS.leaders.some(l => l.handle === 'DarioAmodei'));
+  assert.ok(CURATED_TWITTER_RECOMMENDATIONS.leaders.some(l => l.handle === 'sama'));
+  assert.ok(CURATED_TWITTER_RECOMMENDATIONS.leaders.some(l => l.handle === 'elonmusk'));
+});
+

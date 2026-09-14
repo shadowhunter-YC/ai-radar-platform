@@ -2,6 +2,9 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import CollectionDrawer from './CollectionDrawer';
+import { CURATED_TWITTER_RECOMMENDATIONS } from '../lib/tweet-parser.mjs';
+
+export { CURATED_TWITTER_RECOMMENDATIONS };
 
 const DEFAULT_AI_KEYWORDS = 'AI, Artificial Intelligence, Machine Learning, LLM, Generative AI, Deepfake, 算法, 人工智能, 大模型';
 const DEFAULT_WECHAT_KEYWORDS = 'AI, 大模型, 模型, 安全, 治理, 合规, 漏洞, 算法, 深度伪造, 备案, 风险, 幻觉, 注入, 数据安全';
@@ -56,7 +59,8 @@ export default function SourceManager() {
   const [twitterName, setTwitterName] = useState('');
   const [twitterDescription, setTwitterDescription] = useState('');
   const [twitterKeywords, setTwitterKeywords] = useState('');
-  const [twitterType, setTwitterType] = useState('user'); // 'user' | 'list'
+  const [twitterType, setTwitterType] = useState('user'); // 'user' | 'keyword' | 'list'
+  const [twitterMinFaves, setTwitterMinFaves] = useState('50'); // '0' | '30' | '50' | '100' | '200'
 
   // 全自动采集调度状态
   const [schedulerStatus, setSchedulerStatus] = useState(null);
@@ -526,6 +530,7 @@ export default function SourceManager() {
     setTwitterDescription('');
     setTwitterKeywords('');
     setTwitterType('user');
+    setTwitterMinFaves('50');
     setTwitterModalOpen(true);
   }
 
@@ -544,19 +549,38 @@ export default function SourceManager() {
       const cleanListId = raw.replace(/\D/g, '');
       return cleanListId ? `https://rss.wilsongo.top/twitter/list/${cleanListId}` : '';
     }
+    if (twitterType === 'keyword') {
+      let query = raw;
+      if (twitterMinFaves && twitterMinFaves !== '0' && !query.includes('min_faves:')) {
+        query = `(${query}) min_faves:${twitterMinFaves}`;
+      }
+      return `https://rss.wilsongo.top/twitter/keyword/${encodeURIComponent(query)}`;
+    }
     const cleanUser = raw.replace(/^@/, '').trim();
     return cleanUser ? `https://rss.wilsongo.top/twitter/user/${cleanUser}` : '';
-  }, [twitterInput, twitterType]);
+  }, [twitterInput, twitterType, twitterMinFaves]);
 
   async function handleSaveTwitterFeed(e) {
     e.preventDefault();
     if (!generatedTwitterRss) {
-      alert('请输入有效的 Twitter 用户名或链接');
+      alert('请输入有效的 Twitter 用户名、关键词或列表链接');
       return;
     }
-    const raw = twitterInput.trim().replace(/^@/, '');
-    const cleanUser = raw.replace(/^https?:\/\/(?:x|twitter)\.com\//i, '').split('/')[0].split('?')[0];
-    const finalName = twitterName.trim() || (twitterType === 'list' ? `X 列表 #${cleanUser}` : `@${cleanUser}`);
+    const raw = twitterInput.trim();
+    let finalName = twitterName.trim();
+    let defaultDesc = '';
+
+    if (twitterType === 'keyword') {
+      finalName = finalName || `#${raw} (热点搜索流)`;
+      defaultDesc = twitterDescription.trim() || `X/Twitter 热点搜索流: ${raw}${twitterMinFaves !== '0' ? ` (点赞 ≥ ${twitterMinFaves})` : ''}`;
+    } else if (twitterType === 'list') {
+      finalName = finalName || `X 列表 #${raw.replace(/\D/g, '')}`;
+      defaultDesc = twitterDescription.trim() || `X/Twitter 公共列表 #${raw}`;
+    } else {
+      const cleanUser = raw.replace(/^@/, '').replace(/^https?:\/\/(?:x|twitter)\.com\//i, '').split('/')[0].split('?')[0];
+      finalName = finalName || `@${cleanUser}`;
+      defaultDesc = twitterDescription.trim() || `X/Twitter 博主 ${finalName} 的推文动态`;
+    }
 
     setBusy(true);
     try {
@@ -569,7 +593,7 @@ export default function SourceManager() {
             name: finalName,
             url: generatedTwitterRss,
             category: 'X/Twitter',
-            description: twitterDescription.trim() || `X/Twitter 博主 ${finalName} 的推文动态`,
+            description: defaultDesc,
             filterKeywords: twitterKeywords.trim(),
             cadence: '每天',
             enabled: 1
@@ -582,7 +606,7 @@ export default function SourceManager() {
       }
       const data = await res.json();
       setSources(prev => [data.feed, ...prev]);
-      setMessage(`已成功订阅 X 博主【${data.feed.name}】！`);
+      setMessage(`已成功订阅【${data.feed.name}】！`);
       setTwitterModalOpen(false);
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
@@ -1527,124 +1551,266 @@ export default function SourceManager() {
       {/* 专属 X / Twitter 订阅 Modal */}
       {twitterModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
-          <div style={{ background: 'var(--color-surface)', border: '1px solid #7dd3fc', borderRadius: 8, maxWidth: 540, width: '100%', padding: 24, boxShadow: '0 16px 36px rgba(0,0,0,.12)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: 12 }}>
+          <div style={{ background: 'var(--color-surface)', border: '1px solid #7dd3fc', borderRadius: 8, maxWidth: 620, width: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 36px rgba(0,0,0,.12)', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', padding: '16px 20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 20, color: '#0284c7' }}>𝕏</span>
-                <strong style={{ fontSize: 18, color: 'var(--color-text)' }}>订阅 X / Twitter 博主</strong>
+                <span style={{ fontSize: 18, fontWeight: 700, color: '#0284c7', fontFamily: 'monospace' }}>[X]</span>
+                <strong style={{ fontSize: 17, color: 'var(--color-text)' }}>订阅 X / Twitter 动态与热点流</strong>
               </div>
-              <button type="button" onClick={() => setTwitterModalOpen(false)} style={{ background: 'transparent', border: 0, color: 'var(--color-text-muted)', fontSize: 22, cursor: 'pointer' }}>×</button>
+              <button type="button" onClick={() => setTwitterModalOpen(false)} style={{ background: 'transparent', border: 0, color: 'var(--color-text-muted)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>
             </div>
 
-            <form onSubmit={handleSaveTwitterFeed} style={{ display: 'grid', gap: 14, marginTop: 16 }}>
-              <div style={{ display: 'flex', gap: 16 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', color: 'var(--color-text)' }}>
-                  <input
-                    type="radio"
-                    name="twitterType"
-                    checked={twitterType === 'user'}
-                    onChange={() => setTwitterType('user')}
-                  />
-                  <span>个人博主 (User)</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', color: 'var(--color-text)' }}>
-                  <input
-                    type="radio"
-                    name="twitterType"
-                    checked={twitterType === 'list'}
-                    onChange={() => setTwitterType('list')}
-                  />
-                  <span>合流列表 (List)</span>
-                </label>
-              </div>
+            <div style={{ overflowY: 'auto', padding: '16px 20px' }}>
+              {/* 精选推荐预置栏 */}
+              <div style={{ background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '12px 14px', marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>精选推荐快捷填入</span>
+                  <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)' }}>点击即可自动载入配置</span>
+                </div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div>
+                    <span style={{ fontSize: 11, color: '#0284c7', fontWeight: 600, display: 'block', marginBottom: 4 }}>热点议题流：</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {CURATED_TWITTER_RECOMMENDATIONS.topics.map(t => (
+                        <button
+                          key={t.name}
+                          type="button"
+                          onClick={() => {
+                            setTwitterType('keyword');
+                            setTwitterInput(t.query);
+                            setTwitterMinFaves(t.minFaves || '50');
+                            setTwitterName(t.name);
+                            setTwitterDescription(t.description);
+                          }}
+                          style={{
+                            fontSize: 11,
+                            padding: '3px 8px',
+                            background: twitterType === 'keyword' && twitterInput === t.query ? '#0284c7' : 'var(--color-surface)',
+                            color: twitterType === 'keyword' && twitterInput === t.query ? '#ffffff' : 'var(--color-text)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 4,
+                            cursor: 'pointer'
+                          }}
+                          title={t.description}
+                        >
+                          {t.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-              <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'var(--color-text)' }}>
-                <span>
-                  {twitterType === 'user' ? 'Twitter 账号名或主页链接' : 'Twitter 列表 ID 或链接'}{' '}
-                  <strong style={{ color: 'var(--color-danger)' }}>*</strong>
-                </span>
-                <input
-                  type="text"
-                  required
-                  placeholder={twitterType === 'user' ? '例如：@elonmusk、sama 或 https://x.com/OpenAI' : '例如：12345678 或 https://x.com/i/lists/12345678'}
-                  value={twitterInput}
-                  onChange={e => setTwitterInput(e.target.value)}
-                  style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-text)' }}
-                />
-              </label>
-
-              {/* 自动生成的 RSS 预览 */}
-              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 4, padding: '10px 12px', fontSize: 12 }}>
-                <span style={{ color: '#0284c7', fontWeight: 500 }}>自动生成的 NAS RSSHub 地址：</span>
-                <div style={{ marginTop: 4, color: generatedTwitterRss ? '#0369a1' : 'var(--color-text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                  {generatedTwitterRss || '（输入账号后自动生成）'}
+                  <div style={{ marginTop: 2 }}>
+                    <span style={{ fontSize: 11, color: '#0284c7', fontWeight: 600, display: 'block', marginBottom: 4 }}>领袖博主：</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {CURATED_TWITTER_RECOMMENDATIONS.leaders.map(l => (
+                        <button
+                          key={l.handle}
+                          type="button"
+                          onClick={() => {
+                            setTwitterType('user');
+                            setTwitterInput(l.handle);
+                            setTwitterMinFaves('0');
+                            setTwitterName(l.name);
+                            setTwitterDescription(`${l.name} (${l.role}) - ${l.description}`);
+                          }}
+                          style={{
+                            fontSize: 11,
+                            padding: '3px 8px',
+                            background: twitterType === 'user' && twitterInput === l.handle ? '#0284c7' : 'var(--color-surface)',
+                            color: twitterType === 'user' && twitterInput === l.handle ? '#ffffff' : 'var(--color-text)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 4,
+                            cursor: 'pointer'
+                          }}
+                          title={`${l.role} - ${l.description}`}
+                        >
+                          @{l.handle} ({l.name})
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'var(--color-text)' }}>
-                <span>显示名称（可选）</span>
-                <input
-                  type="text"
-                  placeholder={twitterInput ? (twitterType === 'list' ? `X 列表` : `@${twitterInput.replace(/^@/, '').split('/').pop()}`) : '留空则默认使用推特 Handle'}
-                  value={twitterName}
-                  onChange={e => setTwitterName(e.target.value)}
-                  style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-text)' }}
-                />
-              </label>
+              <form onSubmit={handleSaveTwitterFeed} style={{ display: 'grid', gap: 14 }}>
+                {/* 订阅模式切换 */}
+                <div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', display: 'block', marginBottom: 6 }}>订阅模式</span>
+                  <div style={{ display: 'flex', gap: 16 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', color: 'var(--color-text)' }}>
+                      <input
+                        type="radio"
+                        name="twitterType"
+                        checked={twitterType === 'user'}
+                        onChange={() => setTwitterType('user')}
+                      />
+                      <span>个人博主 (User)</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', color: 'var(--color-text)' }}>
+                      <input
+                        type="radio"
+                        name="twitterType"
+                        checked={twitterType === 'keyword'}
+                        onChange={() => setTwitterType('keyword')}
+                      />
+                      <span>热点搜索流 (Keyword)</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', color: 'var(--color-text)' }}>
+                      <input
+                        type="radio"
+                        name="twitterType"
+                        checked={twitterType === 'list'}
+                        onChange={() => setTwitterType('list')}
+                      />
+                      <span>合流列表 (List)</span>
+                    </label>
+                  </div>
+                </div>
 
-              <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'var(--color-text)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>关键词筛选（可选，逗号分隔）</span>
+                {/* 目标输入 */}
+                <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'var(--color-text)' }}>
+                  <span>
+                    {twitterType === 'user' ? 'Twitter 账号名或主页链接' : twitterType === 'keyword' ? '搜索关键词 / 组合布尔查询' : 'Twitter 列表 ID 或链接'}{' '}
+                    <strong style={{ color: 'var(--color-danger)' }}>*</strong>
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    placeholder={
+                      twitterType === 'user'
+                        ? '例如：@elonmusk、sama 或 https://x.com/OpenAI'
+                        : twitterType === 'keyword'
+                        ? '例如："AI safety" OR "AI regulation" 或 Dario OR "slow down AI"'
+                        : '例如：12345678 或 https://x.com/i/lists/12345678'
+                    }
+                    value={twitterInput}
+                    onChange={e => setTwitterInput(e.target.value)}
+                    style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-text)' }}
+                  />
+                </label>
+
+                {/* 热点搜索流专属：点赞门槛降噪 */}
+                {twitterType === 'keyword' && (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
+                      <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>互动降噪门槛（仅采集高质量热门推文）</span>
+                      <span style={{ color: 'var(--color-text-muted)' }}>当前: {twitterMinFaves === '0' ? '不限点赞' : `点赞 ≥ ${twitterMinFaves}`}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {[
+                        { label: '点赞 ≥ 50 (推荐)', val: '50' },
+                        { label: '点赞 ≥ 30', val: '30' },
+                        { label: '点赞 ≥ 100', val: '100' },
+                        { label: '点赞 ≥ 200', val: '200' },
+                        { label: '不限', val: '0' }
+                      ].map(item => (
+                        <button
+                          key={item.val}
+                          type="button"
+                          onClick={() => setTwitterMinFaves(item.val)}
+                          style={{
+                            flex: 1,
+                            fontSize: 12,
+                            padding: '6px 0',
+                            textAlign: 'center',
+                            borderRadius: 4,
+                            border: twitterMinFaves === item.val ? '1px solid #0284c7' : '1px solid var(--color-border)',
+                            background: twitterMinFaves === item.val ? '#f0f9ff' : 'var(--color-page)',
+                            color: twitterMinFaves === item.val ? '#0284c7' : 'var(--color-text)',
+                            fontWeight: twitterMinFaves === item.val ? 600 : 400,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 自动生成的 RSS 预览 */}
+                <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 4, padding: '10px 12px', fontSize: 12 }}>
+                  <span style={{ color: '#0284c7', fontWeight: 600 }}>自动生成的 NAS RSSHub 地址：</span>
+                  <div style={{ marginTop: 4, color: generatedTwitterRss ? '#0369a1' : 'var(--color-text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                    {generatedTwitterRss || '（输入有效内容后自动生成）'}
+                  </div>
+                </div>
+
+                <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'var(--color-text)' }}>
+                  <span>订阅源显示名称（可选）</span>
+                  <input
+                    type="text"
+                    placeholder={
+                      twitterInput
+                        ? twitterType === 'keyword'
+                          ? `#${twitterInput} (热点搜索流)`
+                          : twitterType === 'list'
+                          ? 'X 列表'
+                          : `@${twitterInput.replace(/^@/, '').split('/').pop()}`
+                        : '留空则自动生成'
+                    }
+                    value={twitterName}
+                    onChange={e => setTwitterName(e.target.value)}
+                    style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-text)' }}
+                  />
+                </label>
+
+                {twitterType !== 'keyword' && (
+                  <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'var(--color-text)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>关键词筛选（可选，逗号分隔）</span>
+                      <button
+                        type="button"
+                        onClick={() => setTwitterKeywords(DEFAULT_AI_KEYWORDS)}
+                        style={{ background: 'transparent', border: 0, color: 'var(--color-brand-strong)', cursor: 'pointer', fontSize: 12, padding: 0 }}
+                      >
+                        填入 AI 推荐词
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="留空则抓取该博主的所有推文；填入后仅抓取含关键词的推文"
+                      value={twitterKeywords}
+                      onChange={e => setTwitterKeywords(e.target.value)}
+                      style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-text)' }}
+                    />
+                  </label>
+                )}
+
+                <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'var(--color-text)' }}>
+                  <span>说明备注（可选）</span>
+                  <input
+                    type="text"
+                    placeholder="例如：Anthropic 减速论战、加州法案交锋等"
+                    value={twitterDescription}
+                    onChange={e => setTwitterDescription(e.target.value)}
+                    style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-text)' }}
+                  />
+                </label>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8, borderTop: '1px solid var(--color-border)', paddingTop: 14 }}>
+                  <button className="button button--secondary" type="button" onClick={() => setTwitterModalOpen(false)}>
+                    取消
+                  </button>
                   <button
-                    type="button"
-                    onClick={() => setTwitterKeywords(DEFAULT_AI_KEYWORDS)}
-                    style={{ background: 'transparent', border: 0, color: 'var(--color-brand-strong)', cursor: 'pointer', fontSize: 12, padding: 0 }}
+                    className="button"
+                    type="submit"
+                    disabled={busy || !generatedTwitterRss}
+                    style={{
+                      background: '#0284c7',
+                      color: '#fff',
+                      border: 'none',
+                      fontWeight: 600,
+                      padding: '8px 18px',
+                      borderRadius: 4,
+                      cursor: busy || !generatedTwitterRss ? 'not-allowed' : 'pointer'
+                    }}
                   >
-                    填入 AI 推荐词
+                    {busy ? '正在保存…' : '保存并订阅'}
                   </button>
                 </div>
-                <input
-                  type="text"
-                  placeholder="留空则抓取该博主的所有推文；填入后仅抓取含关键词的推文"
-                  value={twitterKeywords}
-                  onChange={e => setTwitterKeywords(e.target.value)}
-                  style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-text)' }}
-                />
-              </label>
-
-              <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'var(--color-text)' }}>
-                <span>说明备注（可选）</span>
-                <input
-                  type="text"
-                  placeholder="例如：OpenAI 创始人、AI 行业领袖"
-                  value={twitterDescription}
-                  onChange={e => setTwitterDescription(e.target.value)}
-                  style={{ minHeight: 38, padding: '8px 10px', background: 'var(--color-page)', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-text)' }}
-                />
-              </label>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8, borderTop: '1px solid var(--color-border)', paddingTop: 14 }}>
-                <button className="button button--secondary" type="button" onClick={() => setTwitterModalOpen(false)}>
-                  取消
-                </button>
-                <button
-                  className="button"
-                  type="submit"
-                  disabled={busy || !generatedTwitterRss}
-                  style={{
-                    background: '#0284c7',
-                    color: '#fff',
-                    border: 'none',
-                    fontWeight: 600,
-                    padding: '8px 16px',
-                    borderRadius: 4,
-                    cursor: busy || !generatedTwitterRss ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {busy ? '正在保存…' : '保存并订阅'}
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
         </div>
       )}
