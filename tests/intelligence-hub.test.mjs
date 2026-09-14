@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { rmSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { normalizeCategory, matchesType, getCategoryMeta, normalizeTags } from '../lib/tag-taxonomy.mjs';
+import { isOpinionArticle, matchArticleToTimeline, matchOpinionToTopic, assembleTopicDossier } from '../lib/topic-matcher.mjs';
 
 test('Taxonomy: normalizeCategory maps legacy and standard types accurately', () => {
   assert.equal(normalizeCategory('合规动态'), '法规政策');
@@ -189,3 +190,59 @@ test('Taxonomy: 五大标准分类精细化规则（绣花打磨）严密判定'
   const tags = normalizeTags(['安全护栏', '越狱防护', '算法备案', 'TC260', '数据脱敏', '水印溯源']);
   assert.deepEqual(tags.sort(), ['AI安全', 'AI合规治理', '内容与身份风险', '安全标准与规范', '数据与隐私'].sort());
 });
+
+test('WeChat & Opinion: 微信二手报道溯源提取与专家深度解读双重打标', () => {
+  // 1. 观点与深度解读判定守卫
+  const opinionArticle1 = {
+    title: '深度解读：欧盟 AI Act 正式生效对跨国企业合规抗辩的七大核心挑战',
+    contentNature: 'opinion',
+    detailTag: '深度解读',
+    tags: ['行业观点', 'EU AI Act'],
+    intelligenceType: '法规政策'
+  };
+  const opinionArticle2 = {
+    title: '专家视点：中国大模型境内算法备案技术演进',
+    detailTag: '专家视角',
+    tags: ['算法备案'],
+    intelligenceType: '法规政策'
+  };
+  const factArticle = {
+    title: '欧盟官方公报正式公布 AI Act 全文法规',
+    contentNature: 'fact',
+    verificationStatus: 'verified',
+    detailTag: '官方正式发布',
+    tags: ['EU AI Act', '法规'],
+    intelligenceType: '法规政策',
+    primaryDate: '2024-07-12',
+    primaryAuthority: '欧盟委员会',
+    primaryDocTitle: 'Regulation (EU) 2024/1689',
+    primaryUrl: 'https://eur-lex.europa.eu'
+  };
+
+  assert.equal(isOpinionArticle(opinionArticle1), true);
+  assert.equal(isOpinionArticle(opinionArticle2), true);
+  assert.equal(isOpinionArticle(factArticle), false);
+
+  // 2. 专题分流逻辑：客观时间线 vs 关联观点
+  const topic = {
+    id: 'topic-eu-act',
+    title: '欧盟AI法案全景',
+    category: 'AI 法规动态',
+    ruleKeywords: ['欧盟|EU|AI Act']
+  };
+
+  // 观点文章严禁进入时间线里程碑，只能进入 associatedOpinions
+  assert.equal(matchArticleToTimeline(opinionArticle1, topic), false);
+  assert.equal(matchArticleToTimeline(factArticle, topic), true);
+
+  assert.equal(matchOpinionToTopic(opinionArticle1, topic), true);
+  assert.equal(matchOpinionToTopic(factArticle, topic), false);
+
+  // 3. 组装专题档案
+  const dossier = assembleTopicDossier(topic, [opinionArticle1, factArticle]);
+  assert.equal(dossier.milestones.length, 1);
+  assert.equal(dossier.milestones[0].title, factArticle.title);
+  assert.equal(dossier.associatedOpinions.length, 1);
+  assert.equal(dossier.associatedOpinions[0].title, opinionArticle1.title);
+});
+

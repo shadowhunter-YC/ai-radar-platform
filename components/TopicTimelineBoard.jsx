@@ -893,7 +893,7 @@ export default function TopicTimelineBoard({ initialTopics = [], allArticles = [
                 ) : null}
 
                 {/* 一手源穿透与引用 */}
-                {(selectedDrawerArticle.primaryAuthority || selectedDrawerArticle.primaryDocTitle || selectedDrawerArticle.primaryQuote) ? (
+                {(selectedDrawerArticle.primaryAuthority || selectedDrawerArticle.primaryDocTitle || selectedDrawerArticle.primaryQuote || selectedDrawerArticle.primaryUrl) ? (
                   <div style={{ backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, padding: '12px 16px' }}>
                     <strong style={{ fontSize: 12, color: '#0369a1', display: 'block', marginBottom: 6 }}>
                       一手源头穿透溯源
@@ -906,6 +906,19 @@ export default function TopicTimelineBoard({ initialTopics = [], allArticles = [
                     {selectedDrawerArticle.primaryDocTitle ? (
                       <div style={{ fontSize: 12.5, color: '#0c4a6e', marginBottom: 4 }}>
                         <strong>官方文件：</strong>《{selectedDrawerArticle.primaryDocTitle}》
+                      </div>
+                    ) : null}
+                    {selectedDrawerArticle.primaryUrl ? (
+                      <div style={{ fontSize: 12.5, color: '#0c4a6e', marginBottom: 4 }}>
+                        <strong>官方源头直达：</strong>
+                        <a
+                          href={selectedDrawerArticle.primaryUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: '#0284c7', textDecoration: 'underline', wordBreak: 'break-all' }}
+                        >
+                          {selectedDrawerArticle.primaryUrl}
+                        </a>
                       </div>
                     ) : null}
                     {selectedDrawerArticle.primaryQuote ? (
