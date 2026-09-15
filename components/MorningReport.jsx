@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DEFAULT_MORNING_PREFERENCES,
   filterReportArticles,
+  getRecommendedReportArticles,
   readSSE,
   safeSourceUrl,
   reportModeLabel
@@ -462,8 +463,8 @@ export function MorningCockpitSection({
   const activeReportDate = activeReport ? getShanghaiDateStr(new Date(activeReport.createdAt)) : '';
   const isShowingToday = !selectedReportId || (activeReport && activeReportDate === todayStr);
 
-  // 匹配资讯
-  const matchedArticles = useMemo(() => filterReportArticles(articles, prefs), [articles, prefs]);
+  // 匹配资讯（具备智能降级与保底）
+  const matchedArticles = useMemo(() => getRecommendedReportArticles(articles, prefs), [articles, prefs]);
 
   // 复制早报全文
   function handleCopy() {
@@ -489,9 +490,9 @@ export function MorningCockpitSection({
   // 调用生成早报（带指定偏好）
   async function generateWithPreferences(targetPrefs) {
     if (generating) return;
-    const matches = filterReportArticles(articles, targetPrefs).slice(0, targetPrefs.limit || 20);
+    const matches = getRecommendedReportArticles(articles, targetPrefs).slice(0, targetPrefs.limit || 20);
     if (!matches.length) {
-      setError('当前偏好下暂无匹配资讯，请在偏好设置中放宽时间范围或关注标签。');
+      setError('知识库中暂无可用的分析素材，请先运行数据采集或稍后重试。');
       return;
     }
 

@@ -110,3 +110,43 @@ test('Scheduler: POST /api/scheduler run 触发全源自动采集', async () => 
   assert.equal(body.success, true);
   assert.ok(body.message.includes('已在后台启动'));
 });
+
+test('Parser: parseLlmJson 兼容 Markdown 代码块反引号与前后杂质文本', async () => {
+  const { parseLlmJson } = await import('../lib/collection-store.mjs');
+  
+  // 1. 标准 JSON
+  assert.deepEqual(parseLlmJson('{"key": "value"}'), { key: 'value' });
+
+  // 2. 带 ```json ... ``` 反引号的典型模型输出
+  const fenced = '```json\n{\n  "title": "测试研判",\n  "severity": "重大"\n}\n```';
+  assert.deepEqual(parseLlmJson(fenced), { title: '测试研判', severity: '重大' });
+
+  // 3. 前后带自然语言问候的输出
+  const wrapped = '您好，以下是为您生成的研判结果：\n```json\n{"isRelevant": true}\n```\n希望对您有帮助！';
+  assert.deepEqual(parseLlmJson(wrapped), { isRelevant: true });
+
+  // 4. 非法输入安全返回 null
+  assert.equal(parseLlmJson(''), null);
+  assert.equal(parseLlmJson(null), null);
+  assert.equal(parseLlmJson('not json at all'), null);
+});
+
+test('DailyReport: getRecommendedReportArticles 智能降级与保底推荐', async () => {
+  const { getRecommendedReportArticles } = await import('../lib/daily-report.mjs');
+  const now = Date.now();
+  const testArticles = [
+    { id: 1, title: '开源代码工具', publishedAt: new Date(now - 3600000).toISOString(), intelligenceType: 'GitHub开源' },
+    { id: 2, title: '历史重大法规', publishedAt: new Date(now - 86400000 * 2).toISOString(), intelligenceType: '法规政策' }
+  ];
+
+  // 1. 当用户设置的分类不包含库内仅有的 24h 资讯时，智能放宽分类，确保获取到今天的文章
+  const strictPrefs = {
+    period: '24h',
+    types: ['法规政策'], // 24h 内无此分类
+    limit: 10
+  };
+
+  const recommended = getRecommendedReportArticles(testArticles, strictPrefs, now);
+  assert.equal(recommended.length, 1);
+  assert.equal(recommended[0].id, 1);
+});

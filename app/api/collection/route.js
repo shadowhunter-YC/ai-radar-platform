@@ -1,4 +1,4 @@
-import { addDraft, cachedDraft, claimHost, clearHostAttempt, confirmDraft, getDraft, logRun, recentRuns, setAnalysis, getRssFeed, touchRssFeed, getLlmConfig } from '@/lib/collection-store.mjs';
+import { addDraft, cachedDraft, claimHost, clearHostAttempt, confirmDraft, getDraft, logRun, recentRuns, setAnalysis, getRssFeed, touchRssFeed, getLlmConfig, parseLlmJson } from '@/lib/collection-store.mjs';
 import { allowedRead, extractArticle, extractFeed, fetchContext, normalizeUrl } from '@/lib/collection-fetch.mjs';
 import { normalizeCategory } from '@/lib/tag-taxonomy.mjs';
 import { verifyPrimarySourceUrl } from '@/lib/source-verifier.mjs';
@@ -55,8 +55,8 @@ export async function POST(request) {
         });
         if (!result.ok) throw new Error(`大模型分析失败（HTTP ${result.status}），请检查余额、模型权限或稍后重试。`);
         const body = await result.json(), choice = body.choices?.[0];
-        if (choice?.finish_reason !== 'stop') throw new Error('AI分析未完整返回，请重试。');
-        let a; try { a = JSON.parse(choice.message.content); } catch { throw new Error('模型未返回有效结构，请重试。'); }
+        const a = parseLlmJson(choice.message.content);
+        if (!a) throw new Error('模型未返回有效结构，请重试。');
         if (!a || !['summary','impact','action'].every(k => typeof a[k] === 'string' && a[k].trim()) || !Array.isArray(a.tags) || !a.tags.every(t => typeof t === 'string')) throw new Error('AI分析缺少必要字段，请重试。');
         const isRelevant = a.isRelevant !== false;
         const rawType = a.intelligenceType || a.category;
